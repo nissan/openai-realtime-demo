@@ -26,10 +26,11 @@ CREATE INDEX idx_learning_sessions_version ON learning_sessions(version);
 CREATE INDEX idx_learning_sessions_started ON learning_sessions(started_at DESC);
 
 -- transcript_turns: individual utterances in a session
+-- session_id is a UUID string (no FK so services can save without creating a learning_session first)
 CREATE TABLE IF NOT EXISTS transcript_turns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
-    speaker speaker_type NOT NULL,
+    session_id TEXT,      -- session identifier (no FK constraint for flexibility)
+    speaker TEXT NOT NULL DEFAULT 'student',  -- student|orchestrator|math|history|english|teacher
     text TEXT NOT NULL,
     subject TEXT,         -- 'math'|'history'|'english' for specialist turns
     turn_index INTEGER NOT NULL DEFAULT 0,
@@ -42,7 +43,7 @@ CREATE INDEX idx_transcript_turns_created ON transcript_turns(created_at DESC);
 -- routing_decisions: log every routing choice the orchestrator makes
 CREATE TABLE IF NOT EXISTS routing_decisions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    session_id TEXT,      -- session identifier (no FK constraint)
     from_agent TEXT NOT NULL,  -- 'orchestrator'
     to_agent TEXT NOT NULL,    -- 'math'|'history'|'english'|'teacher'
     confidence FLOAT,
@@ -56,7 +57,7 @@ CREATE INDEX idx_routing_decisions_session ON routing_decisions(session_id);
 -- escalation_events: teacher escalation requests
 CREATE TABLE IF NOT EXISTS escalation_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    session_id TEXT,      -- session identifier (no FK constraint)
     version session_version NOT NULL,
     reason TEXT,
     -- Version A: LiveKit JWT for teacher to join room with audio/video
@@ -72,7 +73,7 @@ CREATE INDEX idx_escalation_events_session ON escalation_events(session_id);
 -- guardrail_events: log all content moderation decisions
 CREATE TABLE IF NOT EXISTS guardrail_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID REFERENCES learning_sessions(id) ON DELETE SET NULL,
+    session_id TEXT,      -- session identifier (no FK constraint)
     original_text TEXT NOT NULL,
     rewritten_text TEXT,
     categories_flagged TEXT[] DEFAULT '{}',
@@ -85,5 +86,23 @@ CREATE INDEX idx_guardrail_events_session ON guardrail_events(session_id);
 CREATE INDEX idx_guardrail_events_flagged ON guardrail_events(flagged) WHERE flagged = true;
 
 -- Enable Supabase Realtime for live teacher UI updates
-ALTER PUBLICATION supabase_realtime ADD TABLE escalation_events;
-ALTER PUBLICATION supabase_realtime ADD TABLE transcript_turns;
+-- Guard against publication not existing (it's created by the realtime service on first run)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        CREATE PUBLICATION supabase_realtime FOR ALL TABLES;
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    -- Add tables to realtime publication (idempotent)
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE escalation_events;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE transcript_turns;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+END$$;

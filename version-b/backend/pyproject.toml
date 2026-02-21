@@ -13,10 +13,9 @@ dependencies = [
     # OTEL
     "opentelemetry-sdk>=1.25.0",
     "opentelemetry-exporter-otlp-proto-http>=1.25.0",
-    # Shared packages (installed as editable from monorepo root)
-    "guardrail @ file:///${PROJECT_ROOT}/shared/guardrail",
-    "specialists @ file:///${PROJECT_ROOT}/shared/specialists",
-    "observability @ file:///${PROJECT_ROOT}/shared/observability",
+    # Note: guardrail, specialists, observability are shared packages installed
+    # separately (e.g. `pip install -e ../../shared/guardrail` for local dev,
+    # or by Dockerfile explicitly before installing this package).
 ]
 
 [project.optional-dependencies]

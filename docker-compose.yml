@@ -430,6 +430,30 @@ services:
       NEXT_PUBLIC_ENABLE_LOGS: "false"
 
   # ============================================================
+  # SHARED INFRA: DB Migrations (one-shot, exits after running)
+  # ============================================================
+  db-migrate:
+    image: postgres:15
+    container_name: db-migrate
+    networks:
+      - tutor-net
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./db/migrations:/migrations:ro
+    command: >
+      bash -c "
+        echo 'Running migrations...' &&
+        psql -h supabase-db -U postgres -d postgres -f /migrations/001_shared_schema.sql 2>&1 | grep -v 'already exists' &&
+        psql -h supabase-db -U postgres -d postgres -f /migrations/002_version_b_jobs.sql 2>&1 | grep -v 'already exists' &&
+        echo 'Migrations complete.'
+      "
+    restart: on-failure
+
+  # ============================================================
   # VERSION A 1/3: LiveKit Server
   # CRITICAL: rtc.node_ip=127.0.0.1 in version-a/livekit.yaml (macOS required)
   # ============================================================
@@ -526,14 +550,11 @@ services:
 
   # ============================================================
   # VERSION B 1/1: Backend B (FastAPI, port 8001)
-  # NOTE: Uses placeholder image until Dockerfile is ready.
-  #       Uncomment build section and remove image line when ready.
   # ============================================================
   backend-b:
-    # build:
-    #   context: .
-    #   dockerfile: version-b/backend/Dockerfile
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: version-b/backend/Dockerfile
     container_name: backend-b
     restart: unless-stopped
     networks:
@@ -546,45 +567,46 @@ services:
       redis:
         condition: service_healthy
     environment:
-      PORT: "8001"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse:3000/api/public/otel/v1/traces
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-dev}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-dev}
+      LANGFUSE_HOST: http://langfuse:3000
       PYTHONPATH: /workspace
-    command: ["python", "-c", "import time; print('backend-b placeholder'); time.sleep(86400)"]
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
       start_period: 30s
 
   # ============================================================
-  # FRONTEND 1/1: Next.js (port 3000)
-  # NOTE: Uses placeholder image until Dockerfile is ready.
+  # FRONTEND 1/1: Next.js dev server (port 3000)
+  # Runs npm run dev with source mounted for fast iteration.
   # ============================================================
   frontend:
-    # build:
-    #   context: ./frontend
-    #   dockerfile: Dockerfile
     image: node:20-alpine
     container_name: frontend
+    working_dir: /app
     restart: unless-stopped
     networks:
       - tutor-net
     ports:
       - "3000:3000"
     depends_on:
-      supabase-kong:
+      backend-b:
         condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     environment:
       NEXT_PUBLIC_LIVEKIT_URL: ws://localhost:7880
       NEXT_PUBLIC_BACKEND_B_URL: http://localhost:8001
       NEXT_PUBLIC_SUPABASE_URL: http://localhost:8000
       NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQ1MTkyODAwLCJleHAiOjE5NjA3NjUyMDB9.M44s2bqntLxjHHWKXFGSoNl4NWD_9NQFJWilyFM25wA
-    command: ["sh", "-c", "echo 'frontend placeholder' && sleep 86400"]
+      NODE_ENV: development
+    command: ["sh", "-c", "npm install && npm run dev"]

@@ -4,7 +4,7 @@
 -- orchestrator_jobs: async job tracking for Version B backend
 CREATE TABLE IF NOT EXISTS orchestrator_jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID REFERENCES learning_sessions(id) ON DELETE SET NULL,
+    session_id TEXT,      -- session identifier (no FK constraint)
     status job_status NOT NULL DEFAULT 'pending',
 
     -- Input
