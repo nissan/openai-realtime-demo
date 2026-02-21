@@ -1,0 +1,590 @@
+# Voice AI Tutoring POC — Docker Compose
+# 19 services: 14 shared infra + 3 version-a + 1 version-b + 1 frontend
+#
+# CRITICAL notes:
+#   - langfuse-worker MUST run or Langfuse UI shows 0 traces (silent queue buildup)
+#   - ClickHouse healthcheck uses 127.0.0.1 not localhost (macOS IPv6 routing bug)
+#   - Kong healthcheck uses 127.0.0.1:8001 (admin port), NOT localhost:8000 (proxy)
+#   - OTEL uses HTTP/protobuf at /api/public/otel/v1/traces, NOT gRPC port 4317
+#   - livekit rtc.node_ip=127.0.0.1 is set in version-a/livekit.yaml (macOS required)
+
+networks:
+  tutor-net:
+    driver: bridge
+
+volumes:
+  langfuse-db-data:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-minio-data:
+  supabase-db-data:
+  redis-data:
+
+services:
+
+  # ============================================================
+  # SHARED INFRA 1/14: Redis
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================
+  # SHARED INFRA 2/14: Langfuse PostgreSQL
+  # ============================================================
+  langfuse-db:
+    image: postgres:15
+    container_name: langfuse-db
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ============================================================
+  # SHARED INFRA 3/14: Langfuse ClickHouse
+  # CRITICAL: healthcheck uses 127.0.0.1 NOT localhost (macOS IPv6 issue)
+  # ============================================================
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: langfuse-clickhouse
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      # CRITICAL: 127.0.0.1 not localhost — macOS routes localhost→IPv6 ::1
+      # ClickHouse only listens on IPv4 by default
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # SHARED INFRA 4/14: Langfuse MinIO (blob storage)
+  # ============================================================
+  langfuse-minio:
+    image: minio/minio:latest
+    container_name: langfuse-minio
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - langfuse-minio-data:/data
+    command: server /data --console-address ":9001"
+    ports:
+      - "9090:9000"
+      - "9091:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ============================================================
+  # SHARED INFRA 5/14: Langfuse MinIO init (create bucket)
+  # ============================================================
+  langfuse-minio-init:
+    image: minio/minio:latest
+    container_name: langfuse-minio-init
+    networks:
+      - tutor-net
+    depends_on:
+      langfuse-minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://langfuse-minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/langfuse &&
+        mc anonymous set public local/langfuse &&
+        echo 'MinIO bucket langfuse ready.'
+      "
+    restart: on-failure
+
+  # ============================================================
+  # SHARED INFRA 6/14: Langfuse Web UI (port 3001)
+  # ============================================================
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: langfuse
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "3001:3000"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: mysecret
+      LANGFUSE_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      MINIO_ENDPOINT: langfuse-minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET_NAME: langfuse
+      BLOB_STORAGE_ENABLED: "true"
+      BLOB_STORAGE_MEDIA_UPLOAD_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/api/public/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ============================================================
+  # SHARED INFRA 7/14: Langfuse Worker
+  # CRITICAL: Without this, Langfuse UI shows 0 traces — silent queue buildup.
+  # Processes OTEL spans from queue and writes to ClickHouse.
+  # Must depend_on langfuse (healthy) so DB migrations are complete first.
+  # ============================================================
+  langfuse-worker:
+    image: langfuse/langfuse-worker:latest
+    container_name: langfuse-worker
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      langfuse:
+        condition: service_healthy
+      langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: mysecret
+      LANGFUSE_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      MINIO_ENDPOINT: langfuse-minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET_NAME: langfuse
+      BLOB_STORAGE_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+  # ============================================================
+  # SHARED INFRA 8/14: Supabase PostgreSQL (port 5432)
+  # ============================================================
+  supabase-db:
+    image: supabase/postgres:15.1.0.117
+    container_name: supabase-db
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+    volumes:
+      - supabase-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+
+  # ============================================================
+  # SHARED INFRA 9/14: Supabase Auth (GoTrue)
+  # ============================================================
+  supabase-auth:
+    image: supabase/gotrue:v2.151.0
+    container_name: supabase-auth
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://localhost:8000
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:postgres@supabase-db:5432/postgres
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_URI_ALLOW_LIST: ""
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # SHARED INFRA 10/14: Supabase Kong (API Gateway, port 8000)
+  # CRITICAL: healthcheck uses 127.0.0.1:8001 (admin), NOT localhost:8000 (proxy)
+  # ============================================================
+  supabase-kong:
+    image: kong:2.8.1
+    container_name: supabase-kong
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,jwt,rate-limiting,correlation-id
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      KONG_LOG_LEVEL: warn
+    volumes:
+      - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
+    healthcheck:
+      # CRITICAL: admin port 8001, NOT proxy port 8000
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8001/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # SHARED INFRA 11/14: Supabase REST (PostgREST)
+  # ============================================================
+  supabase-rest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: supabase-rest
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:postgres@supabase-db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ============================================================
+  # SHARED INFRA 12/14: Supabase Realtime
+  # ============================================================
+  supabase-realtime:
+    image: supabase/realtime:v2.28.32
+    container_name: supabase-realtime
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: supabase-db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      FLY_ALLOC_ID: fly123
+      FLY_APP_NAME: realtime
+      SECRET_KEY_BASE: UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3bhZa39tD
+      ERL_AFLAGS: -proto_dist inet_tcp
+      ENABLE_TAILSCALE: "false"
+      DNS_NODES: "''"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/api/tenants || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # SHARED INFRA 13/14: Supabase Meta (postgres-meta)
+  # ============================================================
+  supabase-meta:
+    image: supabase/postgres-meta:v0.80.0
+    container_name: supabase-meta
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: supabase-db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: postgres
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ============================================================
+  # SHARED INFRA 14/14: Supabase Studio (port 54323)
+  # ============================================================
+  supabase-studio:
+    image: supabase/studio:20240422-a2f4b58
+    container_name: supabase-studio
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "54323:3000"
+    depends_on:
+      supabase-kong:
+        condition: service_healthy
+      supabase-meta:
+        condition: service_healthy
+    environment:
+      STUDIO_PG_META_URL: http://supabase-meta:8080
+      POSTGRES_PASSWORD: postgres
+      DEFAULT_ORGANIZATION_NAME: "Tutor POC"
+      DEFAULT_PROJECT_NAME: "voice-ai-tutor"
+      SUPABASE_URL: http://supabase-kong:8000
+      SUPABASE_PUBLIC_URL: http://localhost:8000
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQ1MTkyODAwLCJleHAiOjE5NjA3NjUyMDB9.M44s2bqntLxjHHWKXFGSoNl4NWD_9NQFJWilyFM25wA
+      SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2NTIwMH0.M44s2bqntLxjHHWKXFGSoNl4NWD_9NQFJWilyFM25wA
+      LOGFLARE_API_KEY: ""
+      LOGFLARE_URL: ""
+      NEXT_PUBLIC_ENABLE_LOGS: "false"
+
+  # ============================================================
+  # VERSION A 1/3: LiveKit Server
+  # CRITICAL: rtc.node_ip=127.0.0.1 in version-a/livekit.yaml (macOS required)
+  # ============================================================
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./version-a/livekit.yaml:/livekit.yaml:ro
+    command: --config /livekit.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:7880/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ============================================================
+  # VERSION A 2/3: Agent A (orchestrator + math + history worker)
+  # NOTE: Uses placeholder image until Dockerfile is ready.
+  #       Uncomment build section and remove image line when ready.
+  # ============================================================
+  agent-a:
+    # build:
+    #   context: .
+    #   dockerfile: version-a/agent/Dockerfile
+    image: python:3.11-slim
+    container_name: agent-a
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      livekit:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      supabase-db:
+        condition: service_healthy
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      REDIS_URL: redis://redis:6379
+      # CRITICAL: HTTP/protobuf, NOT gRPC port 4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse:3000/api/public/otel/v1/traces
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
+      DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
+      PYTHONPATH: /workspace
+    command: ["python", "-c", "import time; print('agent-a placeholder'); time.sleep(86400)"]
+
+  # ============================================================
+  # VERSION A 3/3: Agent A English (separate Realtime worker)
+  # NOTE: Uses placeholder image until Dockerfile is ready.
+  # ============================================================
+  agent-a-english:
+    # build:
+    #   context: .
+    #   dockerfile: version-a/agent/Dockerfile
+    image: python:3.11-slim
+    container_name: agent-a-english
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    depends_on:
+      livekit:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      REDIS_URL: redis://redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse:3000/api/public/otel/v1/traces
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
+      DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
+      PYTHONPATH: /workspace
+      AGENT_WORKER: english
+    command: ["python", "-c", "import time; print('agent-a-english placeholder'); time.sleep(86400)"]
+
+  # ============================================================
+  # VERSION B 1/1: Backend B (FastAPI, port 8001)
+  # NOTE: Uses placeholder image until Dockerfile is ready.
+  #       Uncomment build section and remove image line when ready.
+  # ============================================================
+  backend-b:
+    # build:
+    #   context: .
+    #   dockerfile: version-b/backend/Dockerfile
+    image: python:3.11-slim
+    container_name: backend-b
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "8001:8001"
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: "8001"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse:3000/api/public/otel/v1/traces
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
+      PYTHONPATH: /workspace
+    command: ["python", "-c", "import time; print('backend-b placeholder'); time.sleep(86400)"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================
+  # FRONTEND 1/1: Next.js (port 3000)
+  # NOTE: Uses placeholder image until Dockerfile is ready.
+  # ============================================================
+  frontend:
+    # build:
+    #   context: ./frontend
+    #   dockerfile: Dockerfile
+    image: node:20-alpine
+    container_name: frontend
+    restart: unless-stopped
+    networks:
+      - tutor-net
+    ports:
+      - "3000:3000"
+    depends_on:
+      supabase-kong:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_LIVEKIT_URL: ws://localhost:7880
+      NEXT_PUBLIC_BACKEND_B_URL: http://localhost:8001
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:8000
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQ1MTkyODAwLCJleHAiOjE5NjA3NjUyMDB9.M44s2bqntLxjHHWKXFGSoNl4NWD_9NQFJWilyFM25wA
+    command: ["sh", "-c", "echo 'frontend placeholder' && sleep 86400"]

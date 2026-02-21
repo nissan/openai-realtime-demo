@@ -1,0 +1,102 @@
+_format_version: "1.1"
+
+###
+# Supabase Kong configuration
+# Routes internal service traffic for PostgREST, GoTrue Auth, Realtime, and Meta
+###
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQ1MTkyODAwLCJleHAiOjE5NjA3NjUyMDB9.M44s2bqntLxjHHWKXFGSoNl4NWD_9NQFJWilyFM25wA
+  - username: service_role
+    keyauth_credentials:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2NTIwMH0.M44s2bqntLxjHHWKXFGSoNl4NWD_9NQFJWilyFM25wA
+
+plugins:
+  - name: correlation-id
+    config:
+      header_name: Request-Id
+      generator: uuid#counter
+      echo_downstream: false
+
+services:
+  - name: rest-v1
+    _comment: "PostgREST: /rest/v1/*"
+    url: http://supabase-rest:3000/
+    routes:
+      - name: rest-v1-all
+        strip_path: true
+        paths:
+          - /rest/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - anon
+            - service_role
+
+  - name: auth-v1
+    _comment: "GoTrue: /auth/v1/*"
+    url: http://supabase-auth:9999/
+    routes:
+      - name: auth-v1-all
+        strip_path: true
+        paths:
+          - /auth/v1/
+    plugins:
+      - name: cors
+
+  - name: realtime-v1
+    _comment: "Realtime: /realtime/v1/*"
+    url: http://supabase-realtime:4000/socket/
+    routes:
+      - name: realtime-v1-all
+        strip_path: true
+        paths:
+          - /realtime/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - anon
+            - service_role
+
+  - name: meta
+    _comment: "Meta: /pg/*"
+    url: http://supabase-meta:8080/
+    routes:
+      - name: meta-all
+        strip_path: true
+        paths:
+          - /pg/
+    plugins:
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - service_role
+
+  - name: studio
+    _comment: "Studio: /studio/*"
+    url: http://supabase-studio:3000/
+    routes:
+      - name: studio-all
+        strip_path: true
+        paths:
+          - /studio/
+    plugins:
+      - name: cors
