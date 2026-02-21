@@ -1,0 +1,133 @@
+"""Unit tests for intent classifier - all API calls mocked."""
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../"))
+
+
+def _make_anthropic_response(text: str) -> MagicMock:
+    """Create a mock Anthropic API response."""
+    content = MagicMock()
+    content.text = text
+    response = MagicMock()
+    response.content = [content]
+    return response
+
+
+@pytest.mark.asyncio
+async def test_route_math_question():
+    """Test that math questions are routed to math."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("math")
+    )
+
+    result = await route_intent("What is 25% of 80?", client=mock_client)
+    assert result == "math"
+
+
+@pytest.mark.asyncio
+async def test_route_history_question():
+    """Test that history questions are routed to history."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("history")
+    )
+
+    result = await route_intent("Why did World War I start?", client=mock_client)
+    assert result == "history"
+
+
+@pytest.mark.asyncio
+async def test_route_english_question():
+    """Test that English questions are routed to english."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("english")
+    )
+
+    result = await route_intent("Help me improve this sentence.", client=mock_client)
+    assert result == "english"
+
+
+@pytest.mark.asyncio
+async def test_route_escalation():
+    """Test that inappropriate content is escalated."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("escalate")
+    )
+
+    result = await route_intent("How do I hack a computer?", client=mock_client)
+    assert result == "escalate"
+
+
+@pytest.mark.asyncio
+async def test_route_unknown_defaults_to_english():
+    """Test that unknown LLM output defaults to english (safe fallback)."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("unknown_gibberish")
+    )
+
+    result = await route_intent("Something weird", client=mock_client)
+    assert result == "english"
+
+
+@pytest.mark.asyncio
+async def test_route_api_failure_defaults_to_english():
+    """Test that API failures default to english (safe fallback)."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(side_effect=Exception("API error"))
+
+    result = await route_intent("test question", client=mock_client)
+    assert result == "english"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question,expected", [
+    ("What is 2 + 2?", "math"),
+    ("Solve x^2 = 4", "math"),
+    ("What year did Rome fall?", "history"),
+    ("Who was Napoleon?", "history"),
+    ("Fix my grammar", "english"),
+    ("What is a metaphor?", "english"),
+])
+async def test_route_parametrized(question: str, expected: str):
+    """Parametrized routing test covering diverse question types."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response(expected)
+    )
+
+    result = await route_intent(question, client=mock_client)
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_route_intent_live():
+    """Integration test: live Claude Haiku classification. Requires ANTHROPIC_API_KEY."""
+    from specialists.classifier import route_intent
+
+    math_result = await route_intent("What is the square root of 144?")
+    assert math_result == "math"
+
+    history_result = await route_intent("When did World War II end?")
+    assert history_result == "history"
