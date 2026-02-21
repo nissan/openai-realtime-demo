@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-a"
+version = "0.1.0"
+description = "Version A LiveKit agent worker for AI tutoring"
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[openai,silero,deepgram]>=0.12.0",
+    "livekit-api>=0.7.0",
+    "anthropic>=0.30.0",
+    "openai>=1.0.0",
+    "asyncpg>=0.29.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.0.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests requiring live APIs",
+]
+testpaths = ["tests"]
