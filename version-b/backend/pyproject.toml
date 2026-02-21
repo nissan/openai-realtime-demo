@@ -1,0 +1,42 @@
+[project]
+name = "version-b-backend"
+version = "0.1.0"
+description = "Version B FastAPI backend — OpenAI Realtime Direct architecture"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.7.0",
+    "openai>=1.51.0",
+    "asyncpg>=0.29.0",
+    "python-dotenv>=1.0.0",
+    # OTEL
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+    # Shared packages (installed as editable from monorepo root)
+    "guardrail @ file:///${PROJECT_ROOT}/shared/guardrail",
+    "specialists @ file:///${PROJECT_ROOT}/shared/specialists",
+    "observability @ file:///${PROJECT_ROOT}/shared/observability",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "anyio>=4.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests that require live API keys",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
