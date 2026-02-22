@@ -69,22 +69,24 @@ services:
   # CRITICAL: healthcheck uses 127.0.0.1 NOT localhost (macOS IPv6 issue)
   # ============================================================
   langfuse-clickhouse:
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server:24.8-alpine
     container_name: langfuse-clickhouse
     restart: unless-stopped
     networks:
       - tutor-net
     environment:
-      CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
       - langfuse-clickhouse-logs:/var/log/clickhouse-server
+      # CRITICAL: Provides macros, remote_servers, keeper_server, zookeeper config
+      # so that ReplicatedMergeTree + ON CLUSTER default works on a single node.
+      - ./clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
     healthcheck:
-      # CRITICAL: 127.0.0.1 not localhost — macOS routes localhost→IPv6 ::1
-      # ClickHouse only listens on IPv4 by default
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8123/ping || exit 1"]
+      # Use wget — ClickHouse alpine image has wget but not curl.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -139,7 +141,7 @@ services:
   # SHARED INFRA 6/14: Langfuse Web UI (port 3001)
   # ============================================================
   langfuse:
-    image: langfuse/langfuse:latest
+    image: langfuse/langfuse:3
     container_name: langfuse
     restart: unless-stopped
     networks:
@@ -157,20 +159,36 @@ services:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
       NEXTAUTH_URL: http://localhost:3001
       NEXTAUTH_SECRET: mysecret
-      LANGFUSE_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
-      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      SALT: local-dev-salt-not-for-production
+      # Langfuse v3 uses ENCRYPTION_KEY (64-char hex), not LANGFUSE_ENCRYPTION_KEY
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://default:clickhouse@langfuse-clickhouse:8123
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
-      MINIO_ENDPOINT: langfuse-minio
-      MINIO_PORT: "9000"
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      MINIO_BUCKET_NAME: langfuse
-      BLOB_STORAGE_ENABLED: "true"
-      BLOB_STORAGE_MEDIA_UPLOAD_ENABLED: "true"
+      CLICKHOUSE_PASSWORD: clickhouse
+      REDIS_CONNECTION_STRING: redis://redis:6379
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      NEXT_PUBLIC_LANGFUSE_RUN_NEXT_INIT: "true"
+      # Auto-create org/project/keys on first run
+      LANGFUSE_INIT_ORG_ID: tutor-org
+      LANGFUSE_INIT_ORG_NAME: "Voice AI Tutor"
+      LANGFUSE_INIT_PROJECT_ID: tutor-project
+      LANGFUSE_INIT_PROJECT_NAME: "Student Voice Agent"
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-dev
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-dev
+      LANGFUSE_INIT_USER_EMAIL: admin@example.local
+      LANGFUSE_INIT_USER_PASSWORD: changeme123
+      LANGFUSE_INIT_USER_NAME: Admin
+      # S3/MinIO blob storage (required by Langfuse v3 for event upload)
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/api/public/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://$(hostname):3000/api/public/health | grep -q OK || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -183,7 +201,7 @@ services:
   # Must depend_on langfuse (healthy) so DB migrations are complete first.
   # ============================================================
   langfuse-worker:
-    image: langfuse/langfuse-worker:latest
+    image: langfuse/langfuse-worker:3
     container_name: langfuse-worker
     restart: unless-stopped
     networks:
@@ -200,19 +218,20 @@ services:
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
       NEXTAUTH_SECRET: mysecret
-      LANGFUSE_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
-      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      SALT: local-dev-salt-not-for-production
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://default:clickhouse@langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://default:clickhouse@langfuse-clickhouse:8123
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
-      MINIO_ENDPOINT: langfuse-minio
-      MINIO_PORT: "9000"
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      MINIO_BUCKET_NAME: langfuse
-      BLOB_STORAGE_ENABLED: "true"
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
+      CLICKHOUSE_PASSWORD: clickhouse
+      REDIS_CONNECTION_STRING: redis://redis:6379
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
 
   # ============================================================
   # SHARED INFRA 8/14: Supabase PostgreSQL (port 5432)
@@ -240,6 +259,8 @@ services:
       start_period: 30s
     command:
       - postgres
+      - -c
+      - listen_addresses=*
       - -c
       - wal_level=logical
 
@@ -272,7 +293,7 @@ services:
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       GOTRUE_MAILER_AUTOCONFIRM: "true"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9999/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9999/health > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -305,8 +326,9 @@ services:
     volumes:
       - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
     healthcheck:
-      # CRITICAL: admin port 8001, NOT proxy port 8000
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8001/ || exit 1"]
+      # Kong 2.8 image may not have curl; use bash TCP check on proxy port 8000.
+      # Port 8001 (admin) is not exposed to host so we check proxy port 8000 instead.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' 2>/dev/null && echo ok || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -333,7 +355,8 @@ services:
       PGRST_APP_SETTINGS_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
       PGRST_APP_SETTINGS_JWT_EXP: 3600
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/ || exit 1"]
+      # postgrest has bash but no curl/wget; use bash TCP check on port 3000
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/3000' 2>/dev/null && echo ok || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -368,7 +391,8 @@ services:
       ENABLE_TAILSCALE: "false"
       DNS_NODES: "''"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/api/tenants || exit 1"]
+      # realtime has no unauthenticated health endpoint; use bash TCP check on port 4000
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/4000' 2>/dev/null && echo ok || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -394,7 +418,8 @@ services:
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: postgres
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
+      # postgres-meta has node; use bash TCP check on port 8080
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' 2>/dev/null && echo ok || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -404,7 +429,7 @@ services:
   # SHARED INFRA 14/14: Supabase Studio (port 54323)
   # ============================================================
   supabase-studio:
-    image: supabase/studio:20240422-a2f4b58
+    image: supabase/studio:latest
     container_name: supabase-studio
     restart: unless-stopped
     networks:
@@ -428,6 +453,13 @@ services:
       LOGFLARE_API_KEY: ""
       LOGFLARE_URL: ""
       NEXT_PUBLIC_ENABLE_LOGS: "false"
+    healthcheck:
+      # Next.js binds to :: (IPv6), not 127.0.0.1. Use node with $(hostname) like Langfuse.
+      test: ["CMD-SHELL", "node -e \"const h=require('os').hostname(); require('http').get('http://'+h+':3000/', r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # ============================================================
   # SHARED INFRA: DB Migrations (one-shot, exits after running)
@@ -470,12 +502,9 @@ services:
     volumes:
       - ./version-a/livekit.yaml:/livekit.yaml:ro
     command: --config /livekit.yaml
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:7880/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+    # LiveKit container is a minimal Go binary with no shell tools.
+    # No healthcheck possible; agent-a uses service_started dependency.
+
 
   # ============================================================
   # VERSION A 2/3: Agent A (orchestrator + math + history worker)
@@ -493,7 +522,7 @@ services:
       - tutor-net
     depends_on:
       livekit:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
       supabase-db:
@@ -529,7 +558,7 @@ services:
       - tutor-net
     depends_on:
       livekit:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     environment:
