@@ -13,16 +13,37 @@ docker compose ps  # verify all 20 services healthy
 
 ### Run unit tests (no network required)
 ```bash
-PYTHONPATH=$(pwd) uv run --directory version-a/agent pytest tests/ -v
-PYTHONPATH=$(pwd) uv run --directory version-b/backend pytest tests/ -v
-PYTHONPATH=$(pwd) uv run --directory shared/guardrail pytest tests/ -v
-PYTHONPATH=$(pwd) uv run --directory shared/specialists pytest tests/ -v
-PYTHONPATH=$(pwd) uv run --directory shared/observability pytest tests/ -v
+# Shared packages (PYTHONPATH must include shared/ so packages find each other)
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test pytest tests/ -v -m "not integration"
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/observability --extra test pytest tests/ -v
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test pytest tests/ -v -m "not integration"
+
+# Version A (--no-project to skip heavy livekit-agents installation)
+PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
+  --with "pytest>=8" --with "pytest-asyncio>=0.23" \
+  --with "openai>=1.0.0" --with "pydantic>=2.0.0" \
+  pytest version-a/agent/tests/ -v
+
+# Version B (dev extra contains pytest)
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev pytest tests/ -v -m "not integration"
 ```
 
-### Run integration tests (requires API keys)
+### Run integration tests (requires real API keys)
 ```bash
-PYTHONPATH=$(pwd) pytest -m integration -v
+# Per package
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test \
+  pytest tests/integration/ -v -s -m integration
+
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test \
+  pytest tests/integration/ -v -s -m integration
+
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev \
+  pytest tests/integration/ -v -s -m integration
+
+# All tests (unit + integration): integration shows SKIPPED if keys absent
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test pytest tests/ -v
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test pytest tests/ -v
+PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev pytest tests/ -v
 ```
 
 ### Frontend

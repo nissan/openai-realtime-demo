@@ -43,3 +43,7 @@ async def answer_math_question(
     ) as stream:
         async for text in stream.text_stream:
             yield text
+
+
+# Alias used by orchestrator and integration tests
+stream_math_response = answer_math_question

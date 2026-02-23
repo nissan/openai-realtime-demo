@@ -50,3 +50,7 @@ async def answer_english_question(
     async for chunk in stream:
         if chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
+
+
+# Alias used by orchestrator and integration tests
+stream_english_response = answer_english_question

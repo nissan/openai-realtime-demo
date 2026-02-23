@@ -120,14 +120,3 @@ async def test_route_parametrized(question: str, expected: str):
     assert result == expected
 
 
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_route_intent_live():
-    """Integration test: live Claude Haiku classification. Requires ANTHROPIC_API_KEY."""
-    from specialists.classifier import route_intent
-
-    math_result = await route_intent("What is the square root of 144?")
-    assert math_result == "math"
-
-    history_result = await route_intent("When did World War II end?")
-    assert history_result == "history"
