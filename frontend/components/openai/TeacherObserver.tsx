@@ -69,24 +69,25 @@ export default function TeacherObserver({ version, sessionId }: TeacherObserverP
 
       <TranscriptPanel turns={turns} />
 
-      {connected && (
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={injection}
-            onChange={(e) => setInjection(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendInjection()}
-            placeholder="Inject a hint or correction..."
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
-          />
-          <button
-            onClick={sendInjection}
-            className="bg-green-600 hover:bg-green-500 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-          >
-            Inject
-          </button>
-        </div>
-      )}
+      <div className="flex gap-2">
+        <textarea
+          data-testid="teacher-inject-input"
+          value={injection}
+          onChange={(e) => setInjection(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendInjection()}
+          placeholder="Inject a hint or correction..."
+          rows={2}
+          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-green-500 resize-none"
+        />
+        <button
+          data-testid="teacher-inject-submit"
+          onClick={sendInjection}
+          disabled={!connected}
+          className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+        >
+          Inject
+        </button>
+      </div>
     </div>
   );
 }

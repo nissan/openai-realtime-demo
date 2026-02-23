@@ -38,20 +38,20 @@ class OrchestratorAgent:
 
     async def route_to_math(self, question: str) -> str:
         """Route to math specialist."""
-        from version_a.agent.tools.routing import _route_to_math_impl
+        from tools.routing import _route_to_math_impl
         return await _route_to_math_impl(self.session, question)
 
     async def route_to_history(self, question: str) -> str:
         """Route to history specialist."""
-        from version_a.agent.tools.routing import _route_to_history_impl
+        from tools.routing import _route_to_history_impl
         return await _route_to_history_impl(self.session, question)
 
     async def route_to_english(self, question: str) -> str:
         """Route to English (Realtime) specialist."""
-        from version_a.agent.tools.routing import _route_to_english_impl
+        from tools.routing import _route_to_english_impl
         return await _route_to_english_impl(self.session, question)
 
     async def escalate_to_teacher(self, reason: str) -> str:
         """Escalate to human teacher."""
-        from version_a.agent.tools.routing import _escalate_impl
+        from tools.routing import _escalate_impl
         return await _escalate_impl(self.session, reason)

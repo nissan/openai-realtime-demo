@@ -508,14 +508,11 @@ services:
 
   # ============================================================
   # VERSION A 2/3: Agent A (orchestrator + math + history worker)
-  # NOTE: Uses placeholder image until Dockerfile is ready.
-  #       Uncomment build section and remove image line when ready.
   # ============================================================
   agent-a:
-    # build:
-    #   context: .
-    #   dockerfile: version-a/agent/Dockerfile
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: version-a/agent/Dockerfile
     container_name: agent-a
     restart: unless-stopped
     networks:
@@ -541,17 +538,13 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
       PYTHONPATH: /workspace
-    command: ["python", "-c", "import time; print('agent-a placeholder'); time.sleep(86400)"]
-
   # ============================================================
   # VERSION A 3/3: Agent A English (separate Realtime worker)
-  # NOTE: Uses placeholder image until Dockerfile is ready.
   # ============================================================
   agent-a-english:
-    # build:
-    #   context: .
-    #   dockerfile: version-a/agent/Dockerfile
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: version-a/agent/Dockerfile
     container_name: agent-a-english
     restart: unless-stopped
     networks:
@@ -575,7 +568,6 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
       PYTHONPATH: /workspace
       AGENT_WORKER: english
-    command: ["python", "-c", "import time; print('agent-a-english placeholder'); time.sleep(86400)"]
 
   # ============================================================
   # VERSION B 1/1: Backend B (FastAPI, port 8001)

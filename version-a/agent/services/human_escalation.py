@@ -40,7 +40,7 @@ async def notify_escalation(
         )
 
         # Save to database
-        from version_a.agent.services.transcript_store import get_pool
+        from services.transcript_store import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(

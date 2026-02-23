@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 async def _route_to_math_impl(session, question: str) -> str:
     """Route to math specialist. Called by orchestrator @function_tool."""
-    from version_a.agent.agents.math_agent import MathAgent
+    from agents.math_agent import MathAgent
 
     userdata = session.userdata
     userdata.mark_routing()
@@ -27,7 +27,7 @@ async def _route_to_math_impl(session, question: str) -> str:
 
 async def _route_to_history_impl(session, question: str) -> str:
     """Route to history specialist. Called by orchestrator @function_tool."""
-    from version_a.agent.agents.history_agent import HistoryAgent
+    from agents.history_agent import HistoryAgent
 
     userdata = session.userdata
     userdata.mark_routing()
@@ -40,7 +40,7 @@ async def _route_to_history_impl(session, question: str) -> str:
 
 async def _route_to_english_impl(session, question: str) -> str:
     """Route to English (Realtime) specialist. Called by orchestrator @function_tool."""
-    from version_a.agent.agents.english_agent import EnglishAgent
+    from agents.english_agent import EnglishAgent
 
     userdata = session.userdata
     userdata.mark_routing()
@@ -60,7 +60,7 @@ async def _escalate_impl(session, reason: str) -> str:
     logger.warning(f"Escalating session {userdata.session_id}: {reason}")
 
     try:
-        from version_a.agent.services.human_escalation import notify_escalation
+        from services.human_escalation import notify_escalation
         await notify_escalation(
             session_id=userdata.session_id,
             room_name=userdata.room_name,

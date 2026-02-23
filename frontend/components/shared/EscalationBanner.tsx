@@ -9,7 +9,7 @@ interface EscalationBannerProps {
 
 export default function EscalationBanner({ version, teacherToken, teacherWsUrl, onDismiss }: EscalationBannerProps) {
   return (
-    <div className="bg-yellow-900/50 border border-yellow-500/50 rounded-xl p-4 mb-4">
+    <div data-testid="escalation-banner" className="bg-yellow-900/50 border border-yellow-500/50 rounded-xl p-4 mb-4">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-semibold text-yellow-300 mb-1">👩‍🏫 Teacher Notified</p>

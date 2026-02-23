@@ -18,10 +18,11 @@ PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/observability --extra test pytest tests/ -v
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test pytest tests/ -v -m "not integration"
 
-# Version A (--no-project to skip heavy livekit-agents installation)
+# Version A (--no-project to skip heavy livekit-agents installation) — 36 tests
 PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "pytest>=8" --with "pytest-asyncio>=0.23" \
   --with "openai>=1.0.0" --with "pydantic>=2.0.0" \
+  --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
 # Version B (dev extra contains pytest)

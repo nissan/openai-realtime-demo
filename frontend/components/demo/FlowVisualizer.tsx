@@ -24,12 +24,12 @@ export default function FlowVisualizer({ version, activeStep }: FlowVisualizerPr
   const steps = STEPS_A.filter((s) => (version === "a" ? s.versionA : s.versionB));
 
   return (
-    <div className="mt-4 p-3 bg-gray-900 rounded-lg">
+    <div data-testid="flow-visualizer" className="mt-4 p-3 bg-gray-900 rounded-lg">
       <div className="text-xs text-gray-500 mb-2">Pipeline</div>
       <div className="flex items-center gap-2 overflow-x-auto">
         {steps.map((step, i) => (
           <div key={step.id} className="flex items-center gap-2">
-            <div className={`px-2 py-1 rounded text-xs whitespace-nowrap ${
+            <div data-testid={`flow-step-${step.id}`} className={`px-2 py-1 rounded text-xs whitespace-nowrap ${
               activeStep === step.id
                 ? "bg-yellow-500 text-black font-bold"
                 : "bg-gray-800 text-gray-400"

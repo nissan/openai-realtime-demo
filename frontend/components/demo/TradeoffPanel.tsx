@@ -51,14 +51,14 @@ export default function TradeoffPanel({ trigger, onDismiss }: TradeoffPanelProps
   const content = TRADEOFFS[trigger];
 
   return (
-    <div className="bg-gray-900 border border-yellow-500/50 rounded-xl p-4 my-4">
+    <div data-testid="tradeoff-panel" className="bg-gray-900 border border-yellow-500/50 rounded-xl p-4 my-4">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-yellow-400">⚡</span>
           <span className="font-semibold text-sm">How this works differently here</span>
         </div>
         {onDismiss && (
-          <button onClick={onDismiss} className="text-gray-500 hover:text-gray-300 text-sm">✕</button>
+          <button data-testid="tradeoff-dismiss" onClick={onDismiss} className="text-gray-500 hover:text-gray-300 text-sm">✕</button>
         )}
       </div>
       <div className="text-xs text-gray-400 font-medium mb-2">{content.title}</div>
