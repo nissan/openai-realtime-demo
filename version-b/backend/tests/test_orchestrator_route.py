@@ -4,9 +4,14 @@ Unit tests for orchestrator router — mocked LLM calls.
 Tests POST /orchestrate and GET /orchestrate/{job_id} without any network.
 """
 import asyncio
+import sys
+import os
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient, ASGITransport
+
+# Add shared/ to sys.path so specialists and guardrail are importable
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../shared"))
 
 from backend.main import app
 from backend.services.job_store import _jobs
@@ -78,24 +83,48 @@ async def test_full_orchestration_pipeline(client):
     """
     Integration-style test: dispatch job, run background orchestration with
     mocked specialists, verify job completes with safe_text.
+
+    Uses sys.modules injection to avoid requiring anthropic/openai in test venv.
     """
     from backend.services.job_store import get_job
 
-    # Mock classifier + specialist + guardrail
-    async def mock_classifier(text):
+    # Mock classifier + specialist + guardrail functions
+    async def mock_classifier(text, client=None):
         return "math"
 
-    async def mock_specialist(text):
+    async def mock_specialist_stream(text):
         yield "The answer is 20."
 
-    async def mock_guardrail(stream):
+    async def mock_guardrail(stream, client=None):
         async for chunk in stream:
             yield chunk
 
+    # Inject fake modules so lazy imports inside _run_orchestration work
+    # without needing anthropic/openai installed in this venv.
+    mock_classifier_mod = MagicMock()
+    mock_classifier_mod.route_intent = mock_classifier
+
+    mock_math_mod = MagicMock()
+    mock_math_mod.stream_math_response = lambda text: mock_specialist_stream(text)
+
+    mock_guardrail_service = MagicMock()
+    mock_guardrail_service.check_stream_with_sentence_buffer = mock_guardrail
+
+    mock_specialists = MagicMock()
+    mock_specialists.classifier = mock_classifier_mod
+    mock_specialists.math = mock_math_mod
+
+    mock_guardrail_pkg = MagicMock()
+    mock_guardrail_pkg.service = mock_guardrail_service
+
     with (
-        patch("specialists.classifier.route_intent", new=mock_classifier),
-        patch("specialists.math.stream_math_response", return_value=mock_specialist("x")),
-        patch("guardrail.service.check_stream_with_sentence_buffer", side_effect=mock_guardrail),
+        patch.dict(sys.modules, {
+            "specialists": mock_specialists,
+            "specialists.classifier": mock_classifier_mod,
+            "specialists.math": mock_math_mod,
+            "guardrail": mock_guardrail_pkg,
+            "guardrail.service": mock_guardrail_service,
+        }),
         patch("backend.routers.orchestrator._save_transcript", new=AsyncMock()),
     ):
         # Dispatch
@@ -106,9 +135,9 @@ async def test_full_orchestration_pipeline(client):
         assert post_resp.status_code == 200
         job_id = post_resp.json()["job_id"]
 
-        # Wait for background task (run it directly for test)
+        # Run background orchestration directly (no asyncio.create_task)
         job = get_job(job_id)
-        from backend.routers.orchestrator import _sessions, _run_orchestration
+        from backend.routers.orchestrator import _run_orchestration
         from backend.models.session_state import SessionUserdata
         session = SessionUserdata(session_id="sess-pipeline")
 
