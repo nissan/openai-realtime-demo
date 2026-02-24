@@ -5,9 +5,28 @@ English: uses OpenAI Realtime native AgentSession (separate worker).
 """
 import logging
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *args):  # silence default access log spam
+        pass
+
+
+def _start_health_server(port: int = 8080) -> None:
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    logger.info(f"Health server started on port {port}")
 
 
 def setup_observability():
@@ -112,6 +131,7 @@ if __name__ == "__main__":
     from livekit.agents import WorkerOptions, cli, WorkerType
 
     setup_observability()
+    _start_health_server()
 
     worker_type = os.environ.get("AGENT_WORKER", "orchestrator")
 

@@ -15,10 +15,12 @@ Version B tradeoff vs Version A:
 import asyncio
 import logging
 import os
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import AsyncOpenAI
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.routers.csrf import require_csrf
 from backend.services.job_store import get_job
@@ -26,6 +28,7 @@ from backend.models.job import JobStatus
 
 router = APIRouter(prefix="/tts", tags=["tts"])
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 _openai: AsyncOpenAI | None = None
 TTS_CHUNK_SIZE = 4096  # bytes per chunk (~128ms at 16kHz PCM16)
@@ -44,7 +47,8 @@ class TtsStreamRequest(BaseModel):
 
 
 @router.post("/stream", dependencies=[Depends(require_csrf)])
-async def stream_tts(req: TtsStreamRequest) -> StreamingResponse:
+@limiter.limit("30/minute")
+async def stream_tts(request: Request, req: TtsStreamRequest) -> StreamingResponse:
     """
     Stream TTS audio for a completed orchestration job.
 

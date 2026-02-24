@@ -25,7 +25,7 @@ PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
-# Version B (dev extra contains pytest) — 62 tests total unit
+# Version B (dev extra contains pytest) — 64 tests total unit
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev pytest tests/ -v -m "not integration"
 ```
 
@@ -104,10 +104,10 @@ Use `ConnectionGuard` pattern — NO `SessionProvider` wrapper.
 `frontend/app/api/livekit-token/route.ts` uses ONLY Node.js built-in `crypto` (HMAC-SHA256).
 Do NOT import `livekit-server-sdk` — it's not in the Docker image's node_modules.
 
-### Test counts (Plan 11 — ~234 total: 138 unit + 14 integration + 82 E2E)
+### Test counts (Plan 12 — ~236 total: 140 unit + 14 integration + 82 E2E)
 - Version A unit: 49
 - Shared unit: 27 (9 guardrail + 18 specialists)
-- Version B unit: 62 (+8: 5 CSRF + 3 events)
+- Version B unit: 64 (+10: 5 CSRF + 3 events + 2 rate-limit)
 - Python integration: 14
 - Playwright E2E: 82 (35×2 desktop chromium+firefox + 4×2 mobile + 2×2 observability)
 - New test files: test_csrf.py, test_events.py, observability.spec.ts

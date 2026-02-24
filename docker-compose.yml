@@ -538,6 +538,12 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
       PYTHONPATH: /workspace/shared:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
   # ============================================================
   # VERSION A 3/3: Agent A English (separate Realtime worker)
   # ============================================================
@@ -568,6 +574,12 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
       PYTHONPATH: /workspace/shared:/workspace
       AGENT_WORKER: english
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # ============================================================
   # VERSION B 1/1: Backend B (FastAPI, port 8001)

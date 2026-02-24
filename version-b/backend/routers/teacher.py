@@ -15,8 +15,10 @@ Version B tradeoff vs Version A (LiveKit):
 Also handles: POST /ws/teacher/notify → triggers escalation notification
 """
 import logging
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from backend.routers.csrf import require_csrf
 
@@ -29,6 +31,7 @@ from backend.services.human_escalation import (
 
 router = APIRouter(tags=["teacher"])
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.websocket("/ws/teacher/{session_id}")
@@ -98,7 +101,8 @@ class EscalationResponse(BaseModel):
 
 
 @router.post("/escalate", response_model=EscalationResponse, dependencies=[Depends(require_csrf)])
-async def trigger_escalation(req: EscalationRequest) -> EscalationResponse:
+@limiter.limit("10/minute")
+async def trigger_escalation(request: Request, req: EscalationRequest) -> EscalationResponse:
     """
     Trigger human escalation for a session.
 

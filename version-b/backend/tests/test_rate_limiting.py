@@ -1,4 +1,4 @@
-"""Tests that rate limiting is wired correctly on /orchestrate."""
+"""Tests that rate limiting is wired correctly on /orchestrate, /tts/stream, and /escalate."""
 import sys
 import os
 import pytest
@@ -40,3 +40,21 @@ def test_rate_limiter_wired_to_app_state():
     """Confirms slowapi limiter is registered on app.state (required for 429 handler)."""
     from backend.main import app, limiter
     assert app.state.limiter is limiter
+
+
+@pytest.mark.asyncio
+async def test_tts_stream_returns_404_not_429_for_missing_job(client):
+    """Single /tts/stream request reaches the endpoint (rate limiter doesn't block)."""
+    resp = await client.post("/tts/stream", json={"job_id": "nonexistent", "voice": "alloy"})
+    # 404 = request reached the handler (rate limiter not triggered)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_escalate_returns_200_under_limit(client):
+    """Single /escalate request succeeds (rate limiter doesn't block normal flow)."""
+    with patch("backend.routers.teacher.notify_escalation", return_value="ws://test/ws"):
+        resp = await client.post("/escalate", json={
+            "session_id": "rate-test", "reason": "test", "ws_base_url": None
+        })
+    assert resp.status_code == 200

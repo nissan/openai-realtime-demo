@@ -36,7 +36,7 @@ db/migrations/      Shared Postgres schema + Version B jobs table
                              POST /orchestrate: 20 req/min per-IP rate limit (slowapi)
 ```
 
-See [PLAN.md](PLAN.md) through [PLAN-11.md](PLAN-11.md) for detailed decision history.
+See [PLAN.md](PLAN.md) through [PLAN-12.md](PLAN-12.md) for detailed decision history.
 
 ---
 
@@ -125,7 +125,7 @@ PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
-# Version B — 62 tests
+# Version B — 64 tests
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev \
   pytest tests/ -v -m "not integration"
 ```
@@ -153,16 +153,16 @@ npm install
 npm run test:e2e   # 82 tests: 35 chromium + 35 firefox + 4 mobile-chrome + 4 mobile-safari + 4 observability
 ```
 
-### Total test counts (Plan 11)
+### Total test counts (Plan 12)
 
 | Layer | Count |
 |-------|-------|
 | Version A unit | 49 |
 | Shared unit (guardrail + specialists) | 27 |
-| Version B unit | 62 |
+| Version B unit | 64 |
 | Python integration | 14 |
 | Playwright E2E | 82 |
-| **Total** | **234** |
+| **Total** | **236** |
 
 ---
 
@@ -181,3 +181,4 @@ This project was built incrementally across 10 plans:
 - [PLAN-9.md](PLAN-9.md) — CI pipeline, rate limiting on /orchestrate, FlowVisualizer version-a wiring
 - [PLAN-10.md](PLAN-10.md) — FlowVisualizer E2E highlighting tests, README & housekeeping
 - [PLAN-11.md](PLAN-11.md) — CSRF protection (stateless HMAC) + frontend Langfuse observability via `/events` proxy
+- [PLAN-12.md](PLAN-12.md) — Rate limiting on /tts/stream + /escalate, agent healthchecks, .env.example CSRF_SECRET
