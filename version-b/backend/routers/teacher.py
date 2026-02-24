@@ -15,8 +15,10 @@ Version B tradeoff vs Version A (LiveKit):
 Also handles: POST /ws/teacher/notify → triggers escalation notification
 """
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
+
+from backend.routers.csrf import require_csrf
 
 from backend.services.human_escalation import (
     add_teacher_connection,
@@ -95,7 +97,7 @@ class EscalationResponse(BaseModel):
     session_id: str
 
 
-@router.post("/escalate", response_model=EscalationResponse)
+@router.post("/escalate", response_model=EscalationResponse, dependencies=[Depends(require_csrf)])
 async def trigger_escalation(req: EscalationRequest) -> EscalationResponse:
     """
     Trigger human escalation for a session.

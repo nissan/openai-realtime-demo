@@ -9,7 +9,7 @@ export interface BackendTtsHook {
   stop: () => void;
 }
 
-export function useBackendTts(backendUrl: string): BackendTtsHook {
+export function useBackendTts(backendUrl: string, csrfToken: string | null = null): BackendTtsHook {
   const [ttsState, setTtsState] = useState<TtsState>("idle");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -31,7 +31,10 @@ export function useBackendTts(backendUrl: string): BackendTtsHook {
 
       const res = await fetch(`${backendUrl}/tts/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
         body: JSON.stringify({ job_id: jobId, session_id: sessionId }),
       });
 
@@ -83,7 +86,7 @@ export function useBackendTts(backendUrl: string): BackendTtsHook {
       console.error("Backend TTS failed:", err);
       setTtsState("error");
     }
-  }, [backendUrl, stop]);
+  }, [backendUrl, csrfToken, stop]);
 
   return { ttsState, playJobAudio, stop };
 }

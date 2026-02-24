@@ -2,6 +2,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRealtimeSession } from "@/hooks/openai/useRealtimeSession";
 import { useBackendTts } from "@/hooks/openai/useBackendTts";
+import { useCsrfToken } from "@/hooks/useCsrfToken";
 import TradeoffPanel from "@/components/demo/TradeoffPanel";
 import TranscriptPanel from "@/components/shared/TranscriptPanel";
 import EscalationBanner from "@/components/shared/EscalationBanner";
@@ -17,18 +18,22 @@ interface RealtimeSessionProps {
 export default function RealtimeSession({ selectedQuestion, onPipelineStep }: RealtimeSessionProps) {
   // Stable session ID for the lifetime of this component
   const sessionId = useMemo(() => crypto.randomUUID(), []);
+  const csrfToken = useCsrfToken(BACKEND_URL);
 
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   const [showFillerTradeoff, setShowFillerTradeoff] = useState(false);
   const [escalated, setEscalated] = useState(false);
 
-  const { ttsState, playJobAudio } = useBackendTts(BACKEND_URL);
+  const { ttsState, playJobAudio } = useBackendTts(BACKEND_URL, csrfToken);
 
   const dispatchToOrchestrator = useCallback(async (studentText: string) => {
     try {
       const dispatchRes = await fetch(`${BACKEND_URL}/orchestrate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
         body: JSON.stringify({ session_id: sessionId, student_text: studentText }),
       });
       if (!dispatchRes.ok) {
@@ -40,7 +45,12 @@ export default function RealtimeSession({ selectedQuestion, onPipelineStep }: Re
       // Job dispatched — specialist is processing
       onPipelineStep?.("specialist");
 
-      const jobRes = await fetch(`${BACKEND_URL}/orchestrate/${job_id}/wait`, { method: "POST" });
+      const jobRes = await fetch(`${BACKEND_URL}/orchestrate/${job_id}/wait`, {
+        method: "POST",
+        headers: {
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
+      });
       if (!jobRes.ok) {
         console.error("Orchestrate wait failed:", jobRes.status);
         onPipelineStep?.(null);
@@ -65,7 +75,7 @@ export default function RealtimeSession({ selectedQuestion, onPipelineStep }: Re
     } finally {
       onPipelineStep?.(null);
     }
-  }, [sessionId, playJobAudio, onPipelineStep]);
+  }, [sessionId, csrfToken, playJobAudio, onPipelineStep]);
 
   const { connectionState, connect, disconnect, sendText } = useRealtimeSession(
     BACKEND_URL,

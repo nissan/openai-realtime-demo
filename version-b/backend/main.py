@@ -9,7 +9,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from backend.routers import session, orchestrator, tts, teacher
+from backend.routers import session, orchestrator, tts, teacher, csrf, events
 from backend.services.job_store import start_cleanup_task, stop_cleanup_task
 
 limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
@@ -72,6 +72,8 @@ app.add_middleware(
 )
 
 # Routers
+app.include_router(csrf.router)
+app.include_router(events.router)
 app.include_router(session.router)
 app.include_router(orchestrator.router)
 app.include_router(tts.router)

@@ -18,14 +18,14 @@ PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/observability --extra test pytest tests/ -v
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test pytest tests/ -v -m "not integration"
 
-# Version A (--no-project to skip heavy livekit-agents installation) — 46 tests
+# Version A (--no-project to skip heavy livekit-agents installation) — 49 tests
 PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "pytest>=8" --with "pytest-asyncio>=0.23" \
   --with "openai>=1.0.0" --with "pydantic>=2.0.0" \
   --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
-# Version B (dev extra contains pytest) — 52 tests total unit
+# Version B (dev extra contains pytest) — 62 tests total unit
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev pytest tests/ -v -m "not integration"
 ```
 
@@ -104,13 +104,14 @@ Use `ConnectionGuard` pattern — NO `SessionProvider` wrapper.
 `frontend/app/api/livekit-token/route.ts` uses ONLY Node.js built-in `crypto` (HMAC-SHA256).
 Do NOT import `livekit-server-sdk` — it's not in the Docker image's node_modules.
 
-### Test counts (Plan 10 — ~222 total: 130 unit + 14 integration + 78 E2E)
-- Version A unit: 49 (+3 pipeline-step emit tests)
-- Shared unit: 27 (9 guardrail + 18 specialists; +3 classifier confidence tests)
-- Version B unit: 54 (+2 rate limiting tests)
+### Test counts (Plan 11 — ~234 total: 138 unit + 14 integration + 82 E2E)
+- Version A unit: 49
+- Shared unit: 27 (9 guardrail + 18 specialists)
+- Version B unit: 62 (+8: 5 CSRF + 3 events)
 - Python integration: 14
-- Playwright E2E: 78 (35×2 desktop chromium+firefox + 4×2 mobile; grep filter added to mobile projects)
-- New test files: test_math_agent.py, test_history_agent.py, test_english_agent.py, mobile.spec.ts, test_rate_limiting.py, pipeline.spec.ts (+3 activeStep highlighting tests)
+- Playwright E2E: 82 (35×2 desktop chromium+firefox + 4×2 mobile + 2×2 observability)
+- New test files: test_csrf.py, test_events.py, observability.spec.ts
+- New files: routers/csrf.py, routers/events.py, tests/conftest.py, hooks/useCsrfToken.ts, hooks/useTrace.ts
 
 ## Architecture
 - `shared/` — Python packages used by both backends

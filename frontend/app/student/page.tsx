@@ -1,6 +1,7 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect, useMemo } from "react";
+import { useTrace } from "@/hooks/useTrace";
 import StudentRoom from "@/components/livekit/StudentRoom";
 import RealtimeSession from "@/components/openai/RealtimeSession";
 import SuggestedQuestions from "@/components/demo/SuggestedQuestions";
@@ -22,7 +23,19 @@ function StudentPageContent() {
   const initialStep = searchParams.get("activeStep") ?? undefined;
   const [activeStep, setActiveStep] = useState<string | undefined>(initialStep);
 
+  const traceSessionId = useMemo(() => crypto.randomUUID(), []);
+  const { trace } = useTrace(traceSessionId);
+
+  useEffect(() => {
+    trace("page.loaded", { version });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeStep) trace("pipeline.step", { step: activeStep, version });
+  }, [activeStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSelectQuestion = (q: string) => {
+    trace("question.selected", { version });
     setSelectedQuestion(q);
     // Clear after a tick so the effect fires each time the same question is selected
     setTimeout(() => setSelectedQuestion(null), 100);

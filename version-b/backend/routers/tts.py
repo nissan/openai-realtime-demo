@@ -15,11 +15,12 @@ Version B tradeoff vs Version A:
 import asyncio
 import logging
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 
+from backend.routers.csrf import require_csrf
 from backend.services.job_store import get_job
 from backend.models.job import JobStatus
 
@@ -42,7 +43,7 @@ class TtsStreamRequest(BaseModel):
     voice: str = "alloy"
 
 
-@router.post("/stream")
+@router.post("/stream", dependencies=[Depends(require_csrf)])
 async def stream_tts(req: TtsStreamRequest) -> StreamingResponse:
     """
     Stream TTS audio for a completed orchestration job.

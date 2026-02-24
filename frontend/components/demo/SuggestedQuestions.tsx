@@ -32,6 +32,7 @@ export default function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps
         {QUESTIONS.map((q, i) => (
           <button
             key={i}
+            data-testid="suggested-question"
             onClick={() => onSelect?.(q.text)}
             className={`w-full text-left text-xs px-3 py-2 rounded-lg border transition-opacity hover:opacity-80 ${SUBJECT_COLORS[q.subject]}`}
           >

@@ -7,10 +7,12 @@ GET  /orchestrate/{job_id} → polls job status; streams TTS when complete
 import asyncio
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from backend.routers.csrf import require_csrf
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -43,7 +45,7 @@ class JobStatusResponse(BaseModel):
     error_message: str | None = None
 
 
-@router.post("", response_model=OrchestrationResponse)
+@router.post("", response_model=OrchestrationResponse, dependencies=[Depends(require_csrf)])
 @limiter.limit("20/minute")
 async def dispatch_orchestration(
     request: Request,
@@ -101,7 +103,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     )
 
 
-@router.post("/{job_id}/wait", response_model=JobStatusResponse)
+@router.post("/{job_id}/wait", response_model=JobStatusResponse, dependencies=[Depends(require_csrf)])
 async def wait_for_job(job_id: str, timeout: float = 30.0) -> JobStatusResponse:
     """
     Long-poll endpoint: waits for job completion (up to timeout seconds).
