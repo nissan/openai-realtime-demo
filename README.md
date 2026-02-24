@@ -36,7 +36,7 @@ db/migrations/      Shared Postgres schema + Version B jobs table
                              POST /orchestrate: 20 req/min per-IP rate limit (slowapi)
 ```
 
-See [PLAN.md](PLAN.md) through [PLAN-10.md](PLAN-10.md) for detailed decision history.
+See [PLAN.md](PLAN.md) through [PLAN-11.md](PLAN-11.md) for detailed decision history.
 
 ---
 
@@ -73,6 +73,9 @@ See [PLAN.md](PLAN.md) through [PLAN-10.md](PLAN-10.md) for detailed decision hi
   - `OPENAI_API_KEY` (for GPT-4o specialists + moderation + Realtime)
   - `ANTHROPIC_API_KEY` (for Claude Sonnet 4.6 math + Haiku classifier)
   - `LIVEKIT_API_KEY` + `LIVEKIT_API_SECRET` (for Version A)
+- Optional:
+  - `CSRF_SECRET` — 32-byte hex string for HMAC token signing. Defaults to a random
+    secret at startup (safe for dev; set explicitly in production so tokens survive restarts)
 
 ---
 
@@ -122,7 +125,7 @@ PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
-# Version B — 54 tests
+# Version B — 62 tests
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev \
   pytest tests/ -v -m "not integration"
 ```
@@ -147,19 +150,19 @@ PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev
 ```bash
 cd frontend
 npm install
-npm run test:e2e   # 78 tests: 35 chromium + 35 firefox + 4 mobile-chrome + 4 mobile-safari
+npm run test:e2e   # 82 tests: 35 chromium + 35 firefox + 4 mobile-chrome + 4 mobile-safari + 4 observability
 ```
 
-### Total test counts (Plan 10)
+### Total test counts (Plan 11)
 
 | Layer | Count |
 |-------|-------|
 | Version A unit | 49 |
 | Shared unit (guardrail + specialists) | 27 |
-| Version B unit | 54 |
+| Version B unit | 62 |
 | Python integration | 14 |
-| Playwright E2E | 78 |
-| **Total** | **~222** |
+| Playwright E2E | 82 |
+| **Total** | **234** |
 
 ---
 
@@ -177,3 +180,4 @@ This project was built incrementally across 10 plans:
 - [PLAN-8.md](PLAN-8.md) — RoutingResult confidence, FlowVisualizer version-b wiring, mobile E2E
 - [PLAN-9.md](PLAN-9.md) — CI pipeline, rate limiting on /orchestrate, FlowVisualizer version-a wiring
 - [PLAN-10.md](PLAN-10.md) — FlowVisualizer E2E highlighting tests, README & housekeeping
+- [PLAN-11.md](PLAN-11.md) — CSRF protection (stateless HMAC) + frontend Langfuse observability via `/events` proxy
