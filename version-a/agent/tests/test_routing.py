@@ -16,6 +16,28 @@ def _mock_livekit(monkeypatch):
         monkeypatch.setitem(sys.modules, mod, types.ModuleType(mod))
 
 
+@pytest.fixture(autouse=True)
+def _mock_db(monkeypatch):
+    """Prevent asyncpg segfaults by always mocking get_pool in routing tests."""
+    mock_conn = AsyncMock()
+    mock_conn.execute = AsyncMock(return_value=None)
+    mock_pool = MagicMock()
+    mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    with patch("services.transcript_store.get_pool", new=AsyncMock(return_value=mock_pool)):
+        yield mock_conn
+
+
+def _make_mock_pool():
+    """Return (mock_pool, mock_conn) for asserting DB interactions."""
+    mock_conn = AsyncMock()
+    mock_conn.execute = AsyncMock(return_value=None)
+    mock_pool = MagicMock()
+    mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    return mock_pool, mock_conn
+
+
 @pytest.fixture
 def session():
     from models.session_state import SessionUserdata
@@ -109,3 +131,18 @@ async def test_routing_returns_string_messages(session):
             await _escalate_impl(session, "r"),
         ]
     assert all(isinstance(r, str) for r in results)
+
+
+@pytest.mark.asyncio
+async def test_route_to_math_logs_routing_decision(session):
+    """Routing to math inserts a routing_decisions row."""
+    mock_pool, mock_conn = _make_mock_pool()
+    session.userdata.session_id = "test-session-math"
+    with patch.dict(sys.modules, {
+        "agents.math_agent": MagicMock(MathAgent=MagicMock()),
+    }), patch("services.transcript_store.get_pool", new=AsyncMock(return_value=mock_pool)):
+        from tools.routing import _route_to_math_impl
+        await _route_to_math_impl(session, "What is pi?")
+    mock_conn.execute.assert_called()
+    sql = mock_conn.execute.call_args[0][0]
+    assert "routing_decisions" in sql

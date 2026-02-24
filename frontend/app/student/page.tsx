@@ -19,6 +19,7 @@ function StudentPageContent() {
     : null;
   const [showTradeoff, setShowTradeoff] = useState(true);
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+  const [activeStep, setActiveStep] = useState<string | undefined>(undefined);
 
   const handleSelectQuestion = (q: string) => {
     setSelectedQuestion(q);
@@ -48,9 +49,12 @@ function StudentPageContent() {
           {version === "a" ? (
             <StudentRoom selectedQuestion={selectedQuestion} />
           ) : (
-            <RealtimeSession selectedQuestion={selectedQuestion} />
+            <RealtimeSession
+              selectedQuestion={selectedQuestion}
+              onPipelineStep={(step) => setActiveStep(step ?? undefined)}
+            />
           )}
-          <FlowVisualizer version={version} />
+          <FlowVisualizer version={version} activeStep={activeStep} />
         </div>
         <div className="space-y-4">
           <SuggestedQuestions onSelect={handleSelectQuestion} />

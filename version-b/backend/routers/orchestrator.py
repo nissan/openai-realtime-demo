@@ -160,8 +160,22 @@ async def _run_orchestration(job: OrchestratorJob, session: SessionUserdata) -> 
         safe_text = "".join(safe_chunks).strip()
         raw_text = "".join(raw_chunks).strip()
 
-        # Step 5: Log guardrail event
-        await _log_guardrail_event(job.session_id, raw_text, safe_text, safe_text != raw_text)
+        # Step 5: Log guardrail event with confidence + categories from moderation check
+        guardrail_confidence = 0.0
+        guardrail_categories: list[str] = []
+        if safe_text != raw_text:
+            try:
+                from guardrail.service import check
+                mod_result = await check(raw_text)
+                guardrail_confidence = mod_result.confidence
+                guardrail_categories = mod_result.categories_flagged
+            except Exception:
+                pass  # Best-effort — never block TTS pipeline
+        await _log_guardrail_event(
+            job.session_id, raw_text, safe_text, safe_text != raw_text,
+            confidence=guardrail_confidence,
+            categories_flagged=guardrail_categories,
+        )
 
         # Step 6: Mark complete
         job.mark_complete(safe_text=safe_text, raw_text=raw_text)
@@ -221,15 +235,19 @@ async def _log_guardrail_event(
     original: str,
     rewritten: str,
     flagged: bool,
+    confidence: float = 0.0,
+    categories_flagged: list[str] | None = None,
 ) -> None:
     try:
         from backend.services.transcript_store import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO guardrail_events (session_id, original_text, rewritten_text, flagged) "
-                "VALUES ($1, $2, $3, $4)",
+                "INSERT INTO guardrail_events "
+                "(session_id, original_text, rewritten_text, flagged, confidence, categories_flagged) "
+                "VALUES ($1, $2, $3, $4, $5, $6)",
                 session_id, original, rewritten, flagged,
+                confidence, categories_flagged or [],
             )
     except Exception as e:
         logger.warning(f"guardrail_events insert failed: {e}")

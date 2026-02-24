@@ -72,10 +72,25 @@ async def test_escalate_missing_required_fields(client):
     assert response.status_code == 422
 
 
-@pytest.mark.asyncio
-async def test_teacher_websocket_connect():
-    """WebSocket /ws/teacher/{session_id} connects, receives greeting, disconnects."""
-    pytest.skip("WebSocket testing requires httpx_ws; covered by Playwright E2E tests")
+def test_teacher_websocket_connect_receives_greeting():
+    """WebSocket /ws/teacher/{session_id} connects and receives connected message."""
+    from fastapi.testclient import TestClient
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/teacher/sess-ws-test") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "connected"
+            assert data["session_id"] == "sess-ws-test"
+
+
+def test_teacher_websocket_ping_pong():
+    """Teacher WebSocket responds to ping with pong."""
+    from fastapi.testclient import TestClient
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/teacher/sess-ping") as ws:
+            ws.receive_json()  # consume greeting
+            ws.send_json({"type": "ping"})
+            data = ws.receive_json()
+            assert data["type"] == "pong"
 
 
 @pytest.mark.asyncio

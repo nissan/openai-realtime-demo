@@ -69,7 +69,7 @@ class GuardedAgent:
 
         return _guarded_audio()
 
-    async def _guardrail_text(self, text: str) -> Optional[str]:
+    async def _guardrail_text(self, text: str, session=None) -> Optional[str]:
         """
         Check text with content moderation. Returns safe text or None if suppressed.
         Imports guardrail lazily to avoid import issues in tests.
@@ -77,6 +77,30 @@ class GuardedAgent:
         try:
             from guardrail.service import check_and_rewrite
             result = await check_and_rewrite(text, client=self._openai_client)
+            # Best-effort DB log — never breaks TTS pipeline
+            try:
+                from services.transcript_store import get_pool
+                _session = session or (self.session if hasattr(self, "session") else None)
+                session_id = (
+                    _session.userdata.session_id
+                    if _session and hasattr(_session, "userdata")
+                    else ""
+                )
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "INSERT INTO guardrail_events "
+                        "(session_id, original_text, rewritten_text, flagged, confidence, categories_flagged) "
+                        "VALUES ($1, $2, $3, $4, $5, $6)",
+                        session_id,
+                        result.original_text,
+                        result.rewritten_text or result.original_text,
+                        result.flagged,
+                        result.confidence,
+                        result.categories_flagged,
+                    )
+            except Exception as db_err:
+                logger.warning(f"guardrail_events insert failed: {db_err}")
             return result.safe_text
         except ImportError:
             logger.warning("Guardrail package not available, passing text through")

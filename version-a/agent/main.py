@@ -49,6 +49,19 @@ async def entrypoint_orchestrator(ctx):
     await session.start(agent=agent, room=ctx.room)
     logger.info(f"Orchestrator session started in room {ctx.room.name}")
 
+    # Insert learning session row (best-effort — failure must not break agent start)
+    try:
+        from services.transcript_store import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO learning_sessions (session_id, version, room_name) "
+                "VALUES ($1, 'a', $2) ON CONFLICT DO NOTHING",
+                ctx.room.name, ctx.room.name,
+            )
+    except Exception as e:
+        logger.warning(f"learning_sessions insert failed: {e}")
+
 
 async def entrypoint_english(ctx):
     """
@@ -79,6 +92,19 @@ async def entrypoint_english(ctx):
 
     await session.start(agent=agent, room=ctx.room)
     logger.info(f"English Realtime session started in room {ctx.room.name}")
+
+    # Insert learning session row (best-effort — failure must not break agent start)
+    try:
+        from services.transcript_store import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO learning_sessions (session_id, version, room_name) "
+                "VALUES ($1, 'a', $2) ON CONFLICT DO NOTHING",
+                ctx.room.name, ctx.room.name,
+            )
+    except Exception as e:
+        logger.warning(f"learning_sessions insert failed: {e}")
 
 
 if __name__ == "__main__":

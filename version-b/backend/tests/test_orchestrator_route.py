@@ -157,3 +157,50 @@ async def test_health_endpoint(client):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert response.json()["version"] == "b"
+
+
+# --- _get_specialist_stream routing tests ---
+
+@pytest.mark.asyncio
+async def test_get_specialist_stream_routes_math():
+    """_get_specialist_stream returns stream from math specialist for 'math' subject."""
+    from backend.routers.orchestrator import _get_specialist_stream
+
+    async def mock_math_stream(text):
+        yield "The answer is 20."
+
+    mock_math_mod = MagicMock()
+    mock_math_mod.stream_math_response = mock_math_stream
+
+    with patch.dict(sys.modules, {"specialists.math": mock_math_mod}):
+        stream = _get_specialist_stream("math", "What is 25% of 80?")
+        chunks = [chunk async for chunk in stream]
+    assert chunks == ["The answer is 20."]
+
+
+@pytest.mark.asyncio
+async def test_get_specialist_stream_routes_history():
+    """_get_specialist_stream returns stream from history specialist for 'history' subject."""
+    from backend.routers.orchestrator import _get_specialist_stream
+
+    async def mock_history_stream(text):
+        yield "World War I started in 1914."
+
+    mock_history_mod = MagicMock()
+    mock_history_mod.stream_history_response = mock_history_stream
+
+    with patch.dict(sys.modules, {"specialists.history": mock_history_mod}):
+        stream = _get_specialist_stream("history", "Why did WWI start?")
+        chunks = [chunk async for chunk in stream]
+    assert chunks == ["World War I started in 1914."]
+
+
+@pytest.mark.asyncio
+async def test_get_specialist_stream_escalate_returns_escalation_text():
+    """_get_specialist_stream returns escalation message for 'escalate' subject."""
+    from backend.routers.orchestrator import _get_specialist_stream
+
+    stream = _get_specialist_stream("escalate", "I need help")
+    chunks = [chunk async for chunk in stream]
+    assert len(chunks) == 1
+    assert "teacher" in chunks[0].lower() or "connecting" in chunks[0].lower()

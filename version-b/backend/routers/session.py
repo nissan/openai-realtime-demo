@@ -88,10 +88,11 @@ async def _create_learning_session(session_id: str, token_prefix: str = "") -> N
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO learning_sessions (session_id, version, started_at) "
-                "VALUES ($1, $2, NOW()) "
+                "INSERT INTO learning_sessions "
+                "(session_id, version, session_token, started_at) "
+                "VALUES ($1, $2, $3, NOW()) "
                 "ON CONFLICT (session_id) DO NOTHING",
-                session_id, "b",
+                session_id, "b", token_prefix,
             )
     except Exception as e:
         logger.warning(f"learning_sessions insert failed: {e}")

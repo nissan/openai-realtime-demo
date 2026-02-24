@@ -11,9 +11,10 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_B_URL ?? "http://localhost:8
 
 interface RealtimeSessionProps {
   selectedQuestion?: string | null;
+  onPipelineStep?: (step: string | null) => void;
 }
 
-export default function RealtimeSession({ selectedQuestion }: RealtimeSessionProps) {
+export default function RealtimeSession({ selectedQuestion, onPipelineStep }: RealtimeSessionProps) {
   // Stable session ID for the lifetime of this component
   const sessionId = useMemo(() => crypto.randomUUID(), []);
 
@@ -36,9 +37,13 @@ export default function RealtimeSession({ selectedQuestion }: RealtimeSessionPro
       }
       const { job_id } = await dispatchRes.json() as { job_id: string };
 
+      // Job dispatched — specialist is processing
+      onPipelineStep?.("specialist");
+
       const jobRes = await fetch(`${BACKEND_URL}/orchestrate/${job_id}/wait`, { method: "POST" });
       if (!jobRes.ok) {
         console.error("Orchestrate wait failed:", jobRes.status);
+        onPipelineStep?.(null);
         return;
       }
       const job = await jobRes.json() as {
@@ -47,12 +52,20 @@ export default function RealtimeSession({ selectedQuestion }: RealtimeSessionPro
         job_id: string;
       };
 
-      if (job.tts_ready) await playJobAudio(job_id, sessionId);
+      // Specialist complete — guardrail applied
+      onPipelineStep?.("guardrail");
+
+      if (job.tts_ready) {
+        onPipelineStep?.("tts");
+        await playJobAudio(job_id, sessionId);
+      }
       if (job.subject === "escalate") setEscalated(true);
     } catch (err) {
       console.error("Orchestrator dispatch error:", err);
+    } finally {
+      onPipelineStep?.(null);
     }
-  }, [sessionId, playJobAudio]);
+  }, [sessionId, playJobAudio, onPipelineStep]);
 
   const { connectionState, connect, disconnect, sendText } = useRealtimeSession(
     BACKEND_URL,

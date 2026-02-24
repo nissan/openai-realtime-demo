@@ -18,14 +18,14 @@ PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/observability --extra test pytest tests/ -v
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test pytest tests/ -v -m "not integration"
 
-# Version A (--no-project to skip heavy livekit-agents installation) — 36 tests
+# Version A (--no-project to skip heavy livekit-agents installation) — 46 tests
 PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "pytest>=8" --with "pytest-asyncio>=0.23" \
   --with "openai>=1.0.0" --with "pydantic>=2.0.0" \
   --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
-# Version B (dev extra contains pytest) — 37 tests + 1 skipped = 80 total unit
+# Version B (dev extra contains pytest) — 52 tests total unit
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev pytest tests/ -v -m "not integration"
 ```
 
@@ -103,12 +103,13 @@ Use `ConnectionGuard` pattern — NO `SessionProvider` wrapper.
 `frontend/app/api/livekit-token/route.ts` uses ONLY Node.js built-in `crypto` (HMAC-SHA256).
 Do NOT import `livekit-server-sdk` — it's not in the Docker image's node_modules.
 
-### Test counts (Plan 5 — 178 total: 96 unit + 14 integration + 48 E2E + 6 skipped)
-- Version A unit: 36
+### Test counts (Plan 7 — ~213 total: 122 unit + 14 integration + 64 E2E + 5 skipped)
+- Version A unit: 46 (was 37; +9 new: 3 math_agent + 3 history_agent + 3 english_agent)
 - Shared unit: 24 (9 guardrail + 15 specialists)
-- Version B unit: 37 (+ 1 skipped)
+- Version B unit: 52 (was 49; +3 new: _get_specialist_stream routing tests)
 - Python integration: 14
-- Playwright E2E: 48 (24 chromium + 24 firefox)
+- Playwright E2E: 64 (28 chromium + 28 firefox + 8 mobile; +8 from mobile.spec.ts)
+- New test files: test_math_agent.py, test_history_agent.py, test_english_agent.py, mobile.spec.ts
 
 ## Architecture
 - `shared/` — Python packages used by both backends
