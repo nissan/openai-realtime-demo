@@ -104,13 +104,13 @@ Use `ConnectionGuard` pattern — NO `SessionProvider` wrapper.
 `frontend/app/api/livekit-token/route.ts` uses ONLY Node.js built-in `crypto` (HMAC-SHA256).
 Do NOT import `livekit-server-sdk` — it's not in the Docker image's node_modules.
 
-### Test counts (Plan 9 — ~216 total: 130 unit + 14 integration + 72 E2E)
+### Test counts (Plan 10 — ~222 total: 130 unit + 14 integration + 78 E2E)
 - Version A unit: 49 (+3 pipeline-step emit tests)
 - Shared unit: 27 (9 guardrail + 18 specialists; +3 classifier confidence tests)
 - Version B unit: 54 (+2 rate limiting tests)
 - Python integration: 14
-- Playwright E2E: 72 (32×2 desktop chromium+firefox + 4×2 mobile; grep filter added to mobile projects)
-- New test files: test_math_agent.py, test_history_agent.py, test_english_agent.py, mobile.spec.ts, test_rate_limiting.py
+- Playwright E2E: 78 (35×2 desktop chromium+firefox + 4×2 mobile; grep filter added to mobile projects)
+- New test files: test_math_agent.py, test_history_agent.py, test_english_agent.py, mobile.spec.ts, test_rate_limiting.py, pipeline.spec.ts (+3 activeStep highlighting tests)
 
 ## Architecture
 - `shared/` — Python packages used by both backends

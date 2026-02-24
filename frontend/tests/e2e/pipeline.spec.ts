@@ -22,4 +22,20 @@ test.describe("FlowVisualizer pipeline steps", () => {
       await expect(page.getByTestId(`flow-step-${step}`)).toBeVisible();
     }
   });
+
+  test("active step is highlighted when seeded via URL param (version-b)", async ({ page }) => {
+    await page.goto("/student?v=b&activeStep=specialist");
+    await expect(page.getByTestId("flow-step-specialist")).toHaveAttribute("data-active", "true");
+  });
+
+  test("inactive steps have no data-active attribute when another step is active", async ({ page }) => {
+    await page.goto("/student?v=b&activeStep=specialist");
+    await expect(page.getByTestId("flow-step-guardrail")).not.toHaveAttribute("data-active");
+    await expect(page.getByTestId("flow-step-tts")).not.toHaveAttribute("data-active");
+  });
+
+  test("active step is highlighted for version-a (STT step)", async ({ page }) => {
+    await page.goto("/student?v=a&activeStep=stt");
+    await expect(page.getByTestId("flow-step-stt")).toHaveAttribute("data-active", "true");
+  });
 });

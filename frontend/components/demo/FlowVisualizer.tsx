@@ -29,11 +29,15 @@ export default function FlowVisualizer({ version, activeStep }: FlowVisualizerPr
       <div className="flex items-center gap-2 overflow-x-auto">
         {steps.map((step, i) => (
           <div key={step.id} className="flex items-center gap-2">
-            <div data-testid={`flow-step-${step.id}`} className={`px-2 py-1 rounded text-xs whitespace-nowrap ${
-              activeStep === step.id
-                ? "bg-yellow-500 text-black font-bold"
-                : "bg-gray-800 text-gray-400"
-            }`}>
+            <div
+              data-testid={`flow-step-${step.id}`}
+              data-active={activeStep === step.id ? "true" : undefined}
+              className={`px-2 py-1 rounded text-xs whitespace-nowrap ${
+                activeStep === step.id
+                  ? "bg-yellow-500 text-black font-bold"
+                  : "bg-gray-800 text-gray-400"
+              }`}
+            >
               {step.label}
             </div>
             {i < steps.length - 1 && <span className="text-gray-600">→</span>}

@@ -47,5 +47,9 @@ htmlcov/
 coverage.xml
 *.cover
 
+# Playwright output
+frontend/playwright-report/
+frontend/test-results/
+
 # Docker
 *.log

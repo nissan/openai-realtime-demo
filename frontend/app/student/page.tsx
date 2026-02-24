@@ -19,7 +19,8 @@ function StudentPageContent() {
     : null;
   const [showTradeoff, setShowTradeoff] = useState(true);
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
-  const [activeStep, setActiveStep] = useState<string | undefined>(undefined);
+  const initialStep = searchParams.get("activeStep") ?? undefined;
+  const [activeStep, setActiveStep] = useState<string | undefined>(initialStep);
 
   const handleSelectQuestion = (q: string) => {
     setSelectedQuestion(q);

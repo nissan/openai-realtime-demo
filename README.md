@@ -31,9 +31,12 @@ frontend/           Next.js 14 app (?v=a or ?v=b URL param)
   components/       LiveKit room, Realtime session, FlowVisualizer, TradeoffPanel
 
 db/migrations/      Shared Postgres schema + Version B jobs table
+
+.github/workflows/ci.yml    GitHub Actions: unit-tests + e2e-tests on push/PR to main
+                             POST /orchestrate: 20 req/min per-IP rate limit (slowapi)
 ```
 
-See [PLAN.md](PLAN.md) through [PLAN-7.md](PLAN-7.md) for detailed decision history.
+See [PLAN.md](PLAN.md) through [PLAN-10.md](PLAN-10.md) for detailed decision history.
 
 ---
 
@@ -112,14 +115,14 @@ PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/guardrail --extra test
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory shared/specialists --extra test \
   pytest tests/ -v -m "not integration"
 
-# Version A — 46 tests
+# Version A — 49 tests
 PYTHONPATH=$(pwd)/shared:$(pwd)/version-a/agent uv run --no-project \
   --with "pytest>=8" --with "pytest-asyncio>=0.23" \
   --with "openai>=1.0.0" --with "pydantic>=2.0.0" \
   --with "asyncpg>=0.29.0" \
   pytest version-a/agent/tests/ -v
 
-# Version B — 52 tests
+# Version B — 54 tests
 PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev \
   pytest tests/ -v -m "not integration"
 ```
@@ -144,25 +147,25 @@ PYTHONPATH=$(pwd)/shared:$(pwd) uv run --directory version-b/backend --extra dev
 ```bash
 cd frontend
 npm install
-npm run test:e2e   # 64 tests: 28 chromium + 28 firefox + 4 mobile-chrome + 4 mobile-safari
+npm run test:e2e   # 78 tests: 35 chromium + 35 firefox + 4 mobile-chrome + 4 mobile-safari
 ```
 
-### Total test counts (Plan 7)
+### Total test counts (Plan 10)
 
 | Layer | Count |
 |-------|-------|
-| Version A unit | 46 |
-| Shared unit (guardrail + specialists) | 24 |
-| Version B unit | 52 |
+| Version A unit | 49 |
+| Shared unit (guardrail + specialists) | 27 |
+| Version B unit | 54 |
 | Python integration | 14 |
-| Playwright E2E | 64 |
-| **Total** | **~200** |
+| Playwright E2E | 78 |
+| **Total** | **~222** |
 
 ---
 
 ## Plans
 
-This project was built incrementally across 7 plans:
+This project was built incrementally across 10 plans:
 
 - [PLAN.md](PLAN.md) — Initial architecture + 20-service Docker setup
 - [PLAN-2.md](PLAN-2.md) — Shared packages (guardrail, observability, specialists)
@@ -171,3 +174,6 @@ This project was built incrementally across 7 plans:
 - [PLAN-5.md](PLAN-5.md) — TradeoffPanel, FlowVisualizer, audit trail, teacher WebSocket
 - [PLAN-6.md](PLAN-6.md) — Human escalation, session state, E2E pipeline tests
 - [PLAN-7.md](PLAN-7.md) — Guardrail DB completeness, agent test coverage, mobile E2E
+- [PLAN-8.md](PLAN-8.md) — RoutingResult confidence, FlowVisualizer version-b wiring, mobile E2E
+- [PLAN-9.md](PLAN-9.md) — CI pipeline, rate limiting on /orchestrate, FlowVisualizer version-a wiring
+- [PLAN-10.md](PLAN-10.md) — FlowVisualizer E2E highlighting tests, README & housekeeping
