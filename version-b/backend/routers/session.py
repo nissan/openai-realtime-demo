@@ -69,6 +69,10 @@ async def create_session_token(session_id: str) -> TokenResponse:
             ],
             tool_choice="auto",
         )
+
+        # Persist learning session (best-effort — don't fail token creation on DB error)
+        await _create_learning_session(session_id, token_prefix=session.client_secret.value[:20])
+
         return TokenResponse(
             client_secret={"value": session.client_secret.value},
             session_id=session_id,
@@ -76,3 +80,18 @@ async def create_session_token(session_id: str) -> TokenResponse:
     except Exception as e:
         logger.error(f"Failed to create OpenAI session: {e}")
         raise HTTPException(status_code=500, detail="Failed to create session token")
+
+
+async def _create_learning_session(session_id: str, token_prefix: str = "") -> None:
+    try:
+        from backend.services.transcript_store import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO learning_sessions (session_id, version, started_at) "
+                "VALUES ($1, $2, NOW()) "
+                "ON CONFLICT (session_id) DO NOTHING",
+                session_id, "b",
+            )
+    except Exception as e:
+        logger.warning(f"learning_sessions insert failed: {e}")

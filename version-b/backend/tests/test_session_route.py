@@ -34,7 +34,10 @@ async def test_session_token_endpoint(client):
         return_value=_make_session_response("ek-test-token-123")
     )
 
-    with patch("backend.routers.session.get_openai_client", return_value=mock_openai):
+    with (
+        patch("backend.routers.session.get_openai_client", return_value=mock_openai),
+        patch("backend.routers.session._create_learning_session", new=AsyncMock()),
+    ):
         response = await client.post(
             "/session/token",
             params={"session_id": "sess-abc123"},
@@ -55,7 +58,10 @@ async def test_session_token_returns_provided_session_id(client):
         return_value=_make_session_response()
     )
 
-    with patch("backend.routers.session.get_openai_client", return_value=mock_openai):
+    with (
+        patch("backend.routers.session.get_openai_client", return_value=mock_openai),
+        patch("backend.routers.session._create_learning_session", new=AsyncMock()),
+    ):
         response = await client.post(
             "/session/token",
             params={"session_id": "student-session-xyz"},

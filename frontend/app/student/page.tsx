@@ -18,6 +18,13 @@ function StudentPageContent() {
     ? (tradeoffParam as TradeoffTrigger)
     : null;
   const [showTradeoff, setShowTradeoff] = useState(true);
+  const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+
+  const handleSelectQuestion = (q: string) => {
+    setSelectedQuestion(q);
+    // Clear after a tick so the effect fires each time the same question is selected
+    setTimeout(() => setSelectedQuestion(null), 100);
+  };
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -39,14 +46,14 @@ function StudentPageContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           {version === "a" ? (
-            <StudentRoom />
+            <StudentRoom selectedQuestion={selectedQuestion} />
           ) : (
-            <RealtimeSession />
+            <RealtimeSession selectedQuestion={selectedQuestion} />
           )}
           <FlowVisualizer version={version} />
         </div>
         <div className="space-y-4">
-          <SuggestedQuestions />
+          <SuggestedQuestions onSelect={handleSelectQuestion} />
           <TranscriptPanel />
         </div>
       </div>

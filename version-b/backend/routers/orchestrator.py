@@ -127,8 +127,9 @@ async def _run_orchestration(job: OrchestratorJob, session: SessionUserdata) -> 
     3. Specialist streams text (math=Sonnet 4.6, history=GPT-4o, english=GPT-4o)
     4. Sentence-buffered guardrail rewrites harmful content
     5. Accumulated safe text → mark_complete()
-    6. Save transcript turn
+    6. Save transcript turn + audit trail
     """
+    start_time = datetime.utcnow()
     try:
         from specialists.classifier import route_intent
         from guardrail.service import check_stream_with_sentence_buffer
@@ -139,26 +140,35 @@ async def _run_orchestration(job: OrchestratorJob, session: SessionUserdata) -> 
         session.current_subject = subject
         logger.info(f"Job {job.id[:8]} classified as {subject!r}")
 
-        # Step 2: Get specialist stream
-        text_stream = _get_specialist_stream(subject, job.student_text)
+        # Step 2: Log routing decision
+        await _log_routing_decision(job.session_id, subject, start_time)
 
-        # Step 3: Sentence-buffered guardrail
-        safe_chunks: list[str] = []
+        # Step 3: Get specialist stream; tee it to capture raw text
+        raw_stream = _get_specialist_stream(subject, job.student_text)
         raw_chunks: list[str] = []
 
-        async for safe_chunk in check_stream_with_sentence_buffer(text_stream):
+        async def _tee_stream(stream):
+            async for chunk in stream:
+                raw_chunks.append(chunk)
+                yield chunk
+
+        # Step 4: Sentence-buffered guardrail
+        safe_chunks: list[str] = []
+        async for safe_chunk in check_stream_with_sentence_buffer(_tee_stream(raw_stream)):
             safe_chunks.append(safe_chunk)
 
-        # Also collect raw (re-stream specialist for raw; or store it inline)
         safe_text = "".join(safe_chunks).strip()
-        raw_text = safe_text  # Simplified: use safe_text as raw for now
+        raw_text = "".join(raw_chunks).strip()
 
-        # Step 4: Mark complete
+        # Step 5: Log guardrail event
+        await _log_guardrail_event(job.session_id, raw_text, safe_text, safe_text != raw_text)
+
+        # Step 6: Mark complete
         job.mark_complete(safe_text=safe_text, raw_text=raw_text)
         session.reset_filler()
         session.consume_skip()
 
-        # Step 5: Persist transcript
+        # Step 7: Persist transcript
         await _save_transcript(job, subject, safe_text)
 
         logger.info(f"Job {job.id[:8]} complete, {len(safe_text)} chars")
@@ -189,6 +199,40 @@ def _get_specialist_stream(subject: str, student_text: str):
         # Fallback to english
         from specialists.english import stream_english_response
         return stream_english_response(student_text)
+
+
+async def _log_routing_decision(session_id: str, to_agent: str, start_time: datetime) -> None:
+    try:
+        from backend.services.transcript_store import get_pool
+        latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO routing_decisions (session_id, from_agent, to_agent, latency_ms) "
+                "VALUES ($1, 'orchestrator', $2, $3)",
+                session_id, to_agent, latency_ms,
+            )
+    except Exception as e:
+        logger.warning(f"routing_decisions insert failed: {e}")
+
+
+async def _log_guardrail_event(
+    session_id: str,
+    original: str,
+    rewritten: str,
+    flagged: bool,
+) -> None:
+    try:
+        from backend.services.transcript_store import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO guardrail_events (session_id, original_text, rewritten_text, flagged) "
+                "VALUES ($1, $2, $3, $4)",
+                session_id, original, rewritten, flagged,
+            )
+    except Exception as e:
+        logger.warning(f"guardrail_events insert failed: {e}")
 
 
 async def _save_transcript(job: OrchestratorJob, subject: str, safe_text: str) -> None:

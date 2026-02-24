@@ -30,7 +30,7 @@ export function useTranscript(): TranscriptTurn[] {
             timestamp: new Date(),
           },
         ]);
-      } catch {}
+      } catch (e) { console.error("useTranscript parse error:", e); }
     };
 
     room.on("dataReceived", handler);

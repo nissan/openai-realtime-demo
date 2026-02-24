@@ -3,6 +3,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 export type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
+export interface RealtimeSessionOptions {
+  onTranscript?: (speaker: "user" | "assistant", text: string) => void;
+  onToolCall?: (name: string, args: Record<string, unknown>) => void;
+}
+
 export interface RealtimeSessionHook {
   connectionState: ConnectionState;
   connect: () => Promise<void>;
@@ -10,10 +15,16 @@ export interface RealtimeSessionHook {
   sendText: (text: string) => void;
 }
 
-export function useRealtimeSession(backendUrl: string): RealtimeSessionHook {
+export function useRealtimeSession(
+  backendUrl: string,
+  sessionId: string,
+  options?: RealtimeSessionOptions
+): RealtimeSessionHook {
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const disconnect = useCallback(() => {
     dcRef.current?.close();
@@ -27,8 +38,11 @@ export function useRealtimeSession(backendUrl: string): RealtimeSessionHook {
     try {
       setConnectionState("connecting");
 
-      // Get ephemeral key from backend
-      const tokenRes = await fetch(`${backendUrl}/session/token`, { method: "POST" });
+      // Get ephemeral key from backend, pass session_id so backend can log it
+      const tokenRes = await fetch(
+        `${backendUrl}/session/token?session_id=${encodeURIComponent(sessionId)}`,
+        { method: "POST" }
+      );
       if (!tokenRes.ok) throw new Error("Failed to get session token");
       const { client_secret } = await tokenRes.json();
 
@@ -48,6 +62,42 @@ export function useRealtimeSession(backendUrl: string): RealtimeSessionHook {
       // Data channel for events
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
+
+      dc.onopen = () => {
+        setConnectionState("connected");
+      };
+
+      dc.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data as string);
+          const opts = optionsRef.current;
+
+          if (
+            event.type === "conversation.item.input_audio_transcription.completed" &&
+            opts?.onTranscript
+          ) {
+            opts.onTranscript("user", event.transcript ?? "");
+          } else if (
+            event.type === "response.audio_transcript.done" &&
+            opts?.onTranscript
+          ) {
+            opts.onTranscript("assistant", event.transcript ?? "");
+          } else if (
+            event.type === "response.output_item.done" &&
+            event.item?.type === "function_call" &&
+            opts?.onToolCall
+          ) {
+            try {
+              const args = JSON.parse(event.item.arguments ?? "{}") as Record<string, unknown>;
+              opts.onToolCall(event.item.name as string, args);
+            } catch (parseErr) {
+              console.error("Failed to parse tool call arguments:", parseErr);
+            }
+          }
+        } catch (err) {
+          console.error("dc.onmessage parse error:", err);
+        }
+      };
 
       // Create SDP offer
       const offer = await pc.createOffer();
@@ -69,13 +119,12 @@ export function useRealtimeSession(backendUrl: string): RealtimeSessionHook {
       const answerSdp = await sdpRes.text();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
-      setConnectionState("connected");
     } catch (err) {
       console.error("Realtime connection failed:", err);
       setConnectionState("error");
       disconnect();
     }
-  }, [backendUrl, disconnect]);
+  }, [backendUrl, sessionId, disconnect]);
 
   const sendText = useCallback((text: string) => {
     if (dcRef.current?.readyState === "open") {

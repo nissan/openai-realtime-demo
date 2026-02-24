@@ -1,18 +1,83 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRealtimeSession } from "@/hooks/openai/useRealtimeSession";
 import { useBackendTts } from "@/hooks/openai/useBackendTts";
 import TradeoffPanel from "@/components/demo/TradeoffPanel";
 import TranscriptPanel from "@/components/shared/TranscriptPanel";
+import EscalationBanner from "@/components/shared/EscalationBanner";
 import type { TranscriptTurn } from "@/components/shared/TranscriptPanel";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_B_URL ?? "http://localhost:8001";
 
-export default function RealtimeSession() {
-  const { connectionState, connect, disconnect } = useRealtimeSession(BACKEND_URL);
-  const { ttsState } = useBackendTts(BACKEND_URL);
+interface RealtimeSessionProps {
+  selectedQuestion?: string | null;
+}
+
+export default function RealtimeSession({ selectedQuestion }: RealtimeSessionProps) {
+  // Stable session ID for the lifetime of this component
+  const sessionId = useMemo(() => crypto.randomUUID(), []);
+
   const [turns, setTurns] = useState<TranscriptTurn[]>([]);
   const [showFillerTradeoff, setShowFillerTradeoff] = useState(false);
+  const [escalated, setEscalated] = useState(false);
+
+  const { ttsState, playJobAudio } = useBackendTts(BACKEND_URL);
+
+  const dispatchToOrchestrator = useCallback(async (studentText: string) => {
+    try {
+      const dispatchRes = await fetch(`${BACKEND_URL}/orchestrate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, student_text: studentText }),
+      });
+      if (!dispatchRes.ok) {
+        console.error("Orchestrate dispatch failed:", dispatchRes.status);
+        return;
+      }
+      const { job_id } = await dispatchRes.json() as { job_id: string };
+
+      const jobRes = await fetch(`${BACKEND_URL}/orchestrate/${job_id}/wait`, { method: "POST" });
+      if (!jobRes.ok) {
+        console.error("Orchestrate wait failed:", jobRes.status);
+        return;
+      }
+      const job = await jobRes.json() as {
+        tts_ready: boolean;
+        subject: string | null;
+        job_id: string;
+      };
+
+      if (job.tts_ready) await playJobAudio(job_id, sessionId);
+      if (job.subject === "escalate") setEscalated(true);
+    } catch (err) {
+      console.error("Orchestrator dispatch error:", err);
+    }
+  }, [sessionId, playJobAudio]);
+
+  const { connectionState, connect, disconnect, sendText } = useRealtimeSession(
+    BACKEND_URL,
+    sessionId,
+    {
+      onTranscript: (speaker, text) => {
+        setTurns((prev) => [
+          ...prev,
+          { speaker, text, timestamp: new Date() },
+        ]);
+      },
+      onToolCall: (name, args) => {
+        if (name === "dispatch_to_orchestrator" && typeof args.student_text === "string") {
+          dispatchToOrchestrator(args.student_text);
+        }
+      },
+    }
+  );
+
+  // When selectedQuestion changes (non-null), send it as text
+  useEffect(() => {
+    if (selectedQuestion && connectionState === "connected") {
+      sendText(selectedQuestion);
+    }
+  }, [selectedQuestion, connectionState, sendText]);
 
   const isConnected = connectionState === "connected";
 
@@ -56,6 +121,12 @@ export default function RealtimeSession() {
         </div>
       ) : (
         <div>
+          {escalated && (
+            <EscalationBanner
+              version="b"
+              onDismiss={() => setEscalated(false)}
+            />
+          )}
           <div className="flex items-center gap-2 mb-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             <span className="text-sm text-green-300">Connected — speak your question</span>

@@ -25,18 +25,28 @@ export default function TeacherObserver({ version, sessionId }: TeacherObserverP
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
+    ws.onerror = (e) => {
+      console.error("Teacher WS error:", e);
+      setConnected(false);
+    };
 
     ws.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data);
+        const data = JSON.parse(e.data as string) as {
+          type: string;
+          speaker?: string;
+          text?: string;
+          subject?: string;
+        };
         if (data.type === "transcript") {
           setTurns((prev) => [...prev, {
-            speaker: data.speaker,
-            text: data.text,
+            speaker: data.speaker ?? "unknown",
+            text: data.text ?? "",
             subject: data.subject,
+            timestamp: new Date(),
           }]);
         }
-      } catch {}
+      } catch (e) { console.error("Teacher WS message parse error:", e); }
     };
 
     return () => ws.close();
@@ -53,7 +63,7 @@ export default function TeacherObserver({ version, sessionId }: TeacherObserverP
       <div className="bg-gray-900 rounded-xl p-6">
         <p className="text-blue-400 font-medium mb-2">Version A — LiveKit Teacher Access</p>
         <p className="text-gray-300 text-sm">
-          In Version A, you join the student's LiveKit room directly with full audio/video.
+          In Version A, you join the student&apos;s LiveKit room directly with full audio/video.
           The teacher token was generated and sent when the student escalated.
         </p>
       </div>

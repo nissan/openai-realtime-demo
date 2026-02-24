@@ -1,6 +1,6 @@
 "use client";
 // CRITICAL: ConnectionGuard pattern — NO SessionProvider wrapper
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LiveKitRoom, useRoomContext } from "@livekit/components-react";
 import TranscriptPanel from "@/components/shared/TranscriptPanel";
 import { useTranscript } from "@/hooks/livekit/useTranscript";
@@ -13,18 +13,29 @@ function ConnectionGuard() {
   return <TranscriptPanel turns={turns} />;
 }
 
-export default function StudentRoom() {
+interface StudentRoomProps {
+  selectedQuestion?: string | null;
+}
+
+export default function StudentRoom({ selectedQuestion }: StudentRoomProps) {
   const [token, setToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [showTradeoff, setShowTradeoff] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+
+  // Show "Say this:" hint when a question is selected (voice-only room — can't inject text)
+  useEffect(() => {
+    if (!selectedQuestion) return;
+    setHint(selectedQuestion);
+    const timer = setTimeout(() => setHint(null), 10000);
+    return () => clearTimeout(timer);
+  }, [selectedQuestion]);
 
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      // In production, fetch token from agent-a service
-      // For demo, use a placeholder flow
       const res = await fetch(`/api/livekit-token`);
-      const data = await res.json();
+      const data = await res.json() as { token: string };
       setToken(data.token);
       setShowTradeoff(true);
     } catch (err) {
@@ -34,9 +45,28 @@ export default function StudentRoom() {
     }
   };
 
+  // Hint banner shown in both pre-join and joined states
+  const hintBanner = hint ? (
+    <div
+      data-testid="say-this-hint"
+      className="mb-3 p-3 bg-blue-900/40 border border-blue-500/40 rounded-lg flex items-center justify-between"
+    >
+      <span className="text-sm text-blue-300">
+        💬 Try saying: <em className="font-medium not-italic">&ldquo;{hint}&rdquo;</em>
+      </span>
+      <button
+        onClick={() => setHint(null)}
+        className="text-gray-500 hover:text-gray-300 text-xs ml-3"
+      >
+        ✕
+      </button>
+    </div>
+  ) : null;
+
   if (!token) {
     return (
       <div className="bg-gray-900 rounded-xl p-8 text-center">
+        {hintBanner}
         <p className="text-gray-400 mb-4 text-sm">
           Version A uses LiveKit rooms for multi-participant WebRTC with pipeline STT→LLM→TTS.
         </p>
@@ -56,6 +86,7 @@ export default function StudentRoom() {
       {showTradeoff && (
         <TradeoffPanel trigger="english" onDismiss={() => setShowTradeoff(false)} />
       )}
+      {hintBanner}
       {/* CRITICAL: No SessionProvider — use ConnectionGuard pattern */}
       <LiveKitRoom
         token={token}
