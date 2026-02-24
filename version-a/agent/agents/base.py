@@ -3,6 +3,7 @@ GuardedAgent: base class for all tutoring agents.
 CRITICAL: tts_node MUST return AsyncIterable[rtc.AudioFrame], NOT str.
 The sentence-level guardrail runs in tts_node before synthesis.
 """
+import json
 import logging
 import re
 from typing import AsyncIterable, Optional
@@ -11,6 +12,19 @@ logger = logging.getLogger(__name__)
 
 # Sentence-ending punctuation
 _SENTENCE_END = re.compile(r'[.!?]+\s*')
+
+
+async def _emit_step(agent, step: str | None) -> None:
+    """Emit a pipeline step from an agent instance. Best-effort, never raises."""
+    try:
+        session = agent.session if hasattr(agent, "session") else None
+        if session:
+            payload = json.dumps({"type": "pipeline_step", "step": step}).encode()
+            await session.room.local_participant.publish_data(
+                payload, reliable=True, topic="pipeline-steps"
+            )
+    except Exception as e:
+        logger.debug(f"Step emit skipped: {e}")
 
 
 class GuardedAgent:
@@ -39,6 +53,8 @@ class GuardedAgent:
         CRITICAL: Must return AsyncIterable[rtc.AudioFrame], NOT str.
         """
         async def _guarded_audio():
+            await _emit_step(self, "guardrail")
+            tts_emitted = False
             buffer = ""
 
             async for chunk in text:
@@ -57,6 +73,9 @@ class GuardedAgent:
                     if sentence:
                         safe_sentence = await self._guardrail_text(sentence)
                         if safe_sentence:
+                            if not tts_emitted:
+                                await _emit_step(self, "tts")
+                                tts_emitted = True
                             async for frame in self._synthesize(safe_sentence):
                                 yield frame
 
@@ -64,8 +83,13 @@ class GuardedAgent:
             if buffer.strip():
                 safe_text = await self._guardrail_text(buffer.strip())
                 if safe_text:
+                    if not tts_emitted:
+                        await _emit_step(self, "tts")
+                        tts_emitted = True
                     async for frame in self._synthesize(safe_text):
                         yield frame
+
+            await _emit_step(self, None)   # clear step when TTS finishes
 
         return _guarded_audio()
 

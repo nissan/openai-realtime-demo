@@ -7,8 +7,12 @@ GET  /orchestrate/{job_id} → polls job status; streams TTS when complete
 import asyncio
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 from backend.models.job import OrchestratorJob, JobStatus
 from backend.models.session_state import SessionUserdata
@@ -40,7 +44,11 @@ class JobStatusResponse(BaseModel):
 
 
 @router.post("", response_model=OrchestrationResponse)
-async def dispatch_orchestration(req: OrchestrationRequest) -> OrchestrationResponse:
+@limiter.limit("20/minute")
+async def dispatch_orchestration(
+    request: Request,
+    req: OrchestrationRequest,
+) -> OrchestrationResponse:
     """
     Dispatch an orchestration job. Returns job_id in <100ms.
 

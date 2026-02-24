@@ -5,9 +5,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from backend.routers import session, orchestrator, tts, teacher
 from backend.services.job_store import start_cleanup_task, stop_cleanup_task
+
+limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,6 +53,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS — allow frontend (localhost:3000) and any configured FRONTEND_URL
 allowed_origins = [

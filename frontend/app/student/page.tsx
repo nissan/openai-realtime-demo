@@ -47,7 +47,10 @@ function StudentPageContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           {version === "a" ? (
-            <StudentRoom selectedQuestion={selectedQuestion} />
+            <StudentRoom
+              selectedQuestion={selectedQuestion}
+              onPipelineStep={(step) => setActiveStep(step ?? undefined)}
+            />
           ) : (
             <RealtimeSession
               selectedQuestion={selectedQuestion}

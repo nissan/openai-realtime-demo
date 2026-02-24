@@ -1,23 +1,40 @@
 "use client";
 // CRITICAL: ConnectionGuard pattern — NO SessionProvider wrapper
 import { useState, useEffect } from "react";
-import { LiveKitRoom, useRoomContext } from "@livekit/components-react";
+import { LiveKitRoom, useRoomContext, useDataChannel } from "@livekit/components-react";
 import TranscriptPanel from "@/components/shared/TranscriptPanel";
 import { useTranscript } from "@/hooks/livekit/useTranscript";
 import TradeoffPanel from "@/components/demo/TradeoffPanel";
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "ws://localhost:7880";
 
-function ConnectionGuard() {
+interface ConnectionGuardProps {
+  onPipelineStep?: (step: string | null) => void;
+}
+
+function ConnectionGuard({ onPipelineStep }: ConnectionGuardProps) {
   const turns = useTranscript();
+
+  useDataChannel("pipeline-steps", (msg) => {
+    try {
+      const data = JSON.parse(new TextDecoder().decode(msg.payload));
+      if (data.type === "pipeline_step") {
+        onPipelineStep?.(data.step ?? null);
+      }
+    } catch {
+      // Malformed message — ignore
+    }
+  });
+
   return <TranscriptPanel turns={turns} />;
 }
 
 interface StudentRoomProps {
   selectedQuestion?: string | null;
+  onPipelineStep?: (step: string | null) => void;
 }
 
-export default function StudentRoom({ selectedQuestion }: StudentRoomProps) {
+export default function StudentRoom({ selectedQuestion, onPipelineStep }: StudentRoomProps) {
   const [token, setToken] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [showTradeoff, setShowTradeoff] = useState(false);
@@ -96,7 +113,7 @@ export default function StudentRoom({ selectedQuestion }: StudentRoomProps) {
         video={false}
         className="bg-gray-900 rounded-xl"
       >
-        <ConnectionGuard />
+        <ConnectionGuard onPipelineStep={onPipelineStep} />
       </LiveKitRoom>
     </div>
   );

@@ -3,6 +3,7 @@ Routing tools for the orchestrator agent.
 CRITICAL: Orchestrator-only routing. No specialist-to-specialist transitions.
 Each specialist only has route_back_to_orchestrator, not route_to_other_specialist.
 """
+import json
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -11,6 +12,17 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+async def _emit_pipeline_step(session, step: str | None) -> None:
+    """Emit a pipeline step via LiveKit data channel. Best-effort, never raises."""
+    try:
+        payload = json.dumps({"type": "pipeline_step", "step": step}).encode()
+        await session.room.local_participant.publish_data(
+            payload, reliable=True, topic="pipeline-steps"
+        )
+    except Exception as e:
+        logger.debug(f"Pipeline step emit skipped: {e}")
 
 
 async def _log_routing_decision(session_id: str, to_agent: str, start_time: datetime) -> None:
@@ -38,9 +50,11 @@ async def _route_to_math_impl(session, question: str) -> str:
     userdata.mark_routing()
     userdata.current_subject = "math"
 
+    await _emit_pipeline_step(session, "orchestrator")
     start = datetime.now(timezone.utc)
     logger.info(f"Routing to math: {question[:50]}...")
     await session.transfer_agent(MathAgent)
+    await _emit_pipeline_step(session, "specialist")
     await _log_routing_decision(userdata.session_id or "", "math", start)
     return f"Routing to math specialist for: {question}"
 
@@ -53,9 +67,11 @@ async def _route_to_history_impl(session, question: str) -> str:
     userdata.mark_routing()
     userdata.current_subject = "history"
 
+    await _emit_pipeline_step(session, "orchestrator")
     start = datetime.now(timezone.utc)
     logger.info(f"Routing to history: {question[:50]}...")
     await session.transfer_agent(HistoryAgent)
+    await _emit_pipeline_step(session, "specialist")
     await _log_routing_decision(userdata.session_id or "", "history", start)
     return f"Routing to history specialist for: {question}"
 
@@ -68,9 +84,11 @@ async def _route_to_english_impl(session, question: str) -> str:
     userdata.mark_routing()
     userdata.current_subject = "english"
 
+    await _emit_pipeline_step(session, "orchestrator")
     start = datetime.now(timezone.utc)
     logger.info(f"Routing to English (Realtime): {question[:50]}...")
     await session.transfer_agent(EnglishAgent)
+    await _emit_pipeline_step(session, "specialist")
     await _log_routing_decision(userdata.session_id or "", "english", start)
     return f"Routing to English specialist for: {question}"
 
@@ -82,6 +100,10 @@ async def _escalate_impl(session, reason: str) -> str:
     userdata.mark_routing()
 
     logger.warning(f"Escalating session {userdata.session_id}: {reason}")
+
+    await _emit_pipeline_step(session, "orchestrator")
+    # No specialist transfer for escalation — clear immediately
+    await _emit_pipeline_step(session, None)
 
     start = datetime.now(timezone.utc)
     try:

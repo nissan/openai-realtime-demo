@@ -1,4 +1,5 @@
 """Unit tests for routing tool implementations — all LiveKit calls mocked."""
+import json
 import sys
 import types
 import os
@@ -44,6 +45,9 @@ def session():
     s = MagicMock()
     s.userdata = SessionUserdata()
     s.transfer_agent = AsyncMock(return_value=None)
+    s.room = MagicMock()
+    s.room.local_participant = MagicMock()
+    s.room.local_participant.publish_data = AsyncMock()
     return s
 
 
@@ -146,3 +150,39 @@ async def test_route_to_math_logs_routing_decision(session):
     mock_conn.execute.assert_called()
     sql = mock_conn.execute.call_args[0][0]
     assert "routing_decisions" in sql
+
+
+@pytest.mark.asyncio
+async def test_route_to_math_emits_orchestrator_and_specialist_steps(session):
+    """Routing to math emits orchestrator then specialist pipeline steps."""
+    with patch.dict(sys.modules, {
+        "agents.math_agent": MagicMock(MathAgent=MagicMock()),
+    }):
+        from tools.routing import _route_to_math_impl
+        await _route_to_math_impl(session, "What is 2+2?")
+    calls = session.room.local_participant.publish_data.call_args_list
+    step_names = [json.loads(c.args[0]).get("step") for c in calls]
+    assert "orchestrator" in step_names
+    assert "specialist" in step_names
+
+
+@pytest.mark.asyncio
+async def test_escalate_emits_orchestrator_then_clears(session):
+    """Escalation emits orchestrator step then clears (no specialist transfer)."""
+    with patch("services.human_escalation.notify_escalation", new=AsyncMock(return_value=None)), \
+         patch("services.transcript_store.get_pool", new=AsyncMock()):
+        from tools.routing import _escalate_impl
+        await _escalate_impl(session, "Inappropriate content")
+    calls = session.room.local_participant.publish_data.call_args_list
+    step_names = [json.loads(c.args[0]).get("step") for c in calls]
+    assert "orchestrator" in step_names
+    assert None in step_names   # cleared immediately after orchestrator
+
+
+@pytest.mark.asyncio
+async def test_emit_pipeline_step_is_best_effort_on_error(session):
+    """publish_data failure does not raise — emit is best-effort."""
+    session.room.local_participant.publish_data = AsyncMock(side_effect=Exception("conn error"))
+    from tools.routing import _emit_pipeline_step
+    # Must not raise even when publish_data fails
+    await _emit_pipeline_step(session, "specialist")
