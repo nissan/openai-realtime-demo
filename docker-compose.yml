@@ -537,7 +537,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
-      PYTHONPATH: /workspace
+      PYTHONPATH: /workspace/shared:/workspace
   # ============================================================
   # VERSION A 3/3: Agent A English (separate Realtime worker)
   # ============================================================
@@ -566,7 +566,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-placeholder}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-placeholder}
       DATABASE_URL: postgresql://postgres:postgres@supabase-db:5432/postgres
-      PYTHONPATH: /workspace
+      PYTHONPATH: /workspace/shared:/workspace
       AGENT_WORKER: english
 
   # ============================================================
@@ -597,7 +597,7 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-dev}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-dev}
       LANGFUSE_HOST: http://langfuse:3000
-      PYTHONPATH: /workspace
+      PYTHONPATH: /workspace/shared:/workspace
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8001/health || exit 1"]
       interval: 15s

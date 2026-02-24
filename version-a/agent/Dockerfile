@@ -17,7 +17,8 @@ COPY version-a/agent/ /workspace/agent/
 WORKDIR /workspace/agent
 RUN uv pip install --system -e .
 
-# CRITICAL: PYTHONPATH must include /workspace for shared package imports
-ENV PYTHONPATH=/workspace
+# CRITICAL: /workspace/shared lets Python find guardrail, observability, specialists
+#           /workspace/agent (CWD at runtime) lets Python find agents, models, tools, services
+ENV PYTHONPATH=/workspace/shared:/workspace
 
 CMD ["python", "main.py", "start"]

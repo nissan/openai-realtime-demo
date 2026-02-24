@@ -19,7 +19,8 @@ RUN uv pip install --system \
     "python-dotenv>=1.0.0" \
     "opentelemetry-sdk>=1.25.0" \
     "opentelemetry-exporter-otlp-proto-http>=1.25.0" \
-    "opentelemetry-instrumentation-httpx>=0.40b0"
+    "opentelemetry-instrumentation-httpx>=0.40b0" \
+    "slowapi>=0.1.9"
 
 # Copy shared packages (source only — imported via PYTHONPATH, not pip-installed)
 COPY shared/ ./shared/
