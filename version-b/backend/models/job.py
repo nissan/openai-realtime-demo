@@ -3,7 +3,7 @@ import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -45,7 +45,7 @@ class OrchestratorJob:
     error_message: Optional[str] = None
 
     # Timing
-    dispatched_at: datetime = field(default_factory=datetime.utcnow)
+    dispatched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     classified_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
@@ -58,7 +58,7 @@ class OrchestratorJob:
         """Mark job as processing after classification."""
         self.status = JobStatus.PROCESSING
         self.subject = subject
-        self.classified_at = datetime.utcnow()
+        self.classified_at = datetime.now(timezone.utc)
 
     def mark_complete(self, safe_text: str, raw_text: str = "") -> None:
         """Mark job as complete with guardrailed text."""
@@ -66,14 +66,14 @@ class OrchestratorJob:
         self.safe_text = safe_text
         self.raw_text = raw_text
         self.tts_ready = True
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
         self._completion_event.set()
 
     def mark_error(self, error: str) -> None:
         """Mark job as failed."""
         self.status = JobStatus.ERROR
         self.error_message = error
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
         self._completion_event.set()
 
     async def wait_for_completion(self, timeout: float = 30.0) -> bool:

@@ -6,7 +6,7 @@ GET  /orchestrate/{job_id} → polls job status; streams TTS when complete
 """
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -129,22 +129,26 @@ async def _run_orchestration(job: OrchestratorJob, session: SessionUserdata) -> 
     5. Accumulated safe text → mark_complete()
     6. Save transcript turn + audit trail
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     try:
         from specialists.classifier import route_intent
         from guardrail.service import check_stream_with_sentence_buffer
 
         # Step 1: Classify
-        subject = await route_intent(job.student_text)
-        job.mark_processing(subject)
-        session.current_subject = subject
-        logger.info(f"Job {job.id[:8]} classified as {subject!r}")
+        routing = await route_intent(job.student_text)
+        job.mark_processing(routing.subject)
+        session.current_subject = routing.subject
+        logger.info(f"Job {job.id[:8]} classified as {routing.subject!r} (conf={routing.confidence})")
 
-        # Step 2: Log routing decision
-        await _log_routing_decision(job.session_id, subject, start_time)
+        # Step 2: Log routing decision with confidence + excerpt
+        await _log_routing_decision(
+            job.session_id, routing.subject, start_time,
+            confidence=routing.confidence,
+            transcript_excerpt=job.student_text[:200],
+        )
 
         # Step 3: Get specialist stream; tee it to capture raw text
-        raw_stream = _get_specialist_stream(subject, job.student_text)
+        raw_stream = _get_specialist_stream(routing.subject, job.student_text)
         raw_chunks: list[str] = []
 
         async def _tee_stream(stream):
@@ -183,7 +187,7 @@ async def _run_orchestration(job: OrchestratorJob, session: SessionUserdata) -> 
         session.consume_skip()
 
         # Step 7: Persist transcript
-        await _save_transcript(job, subject, safe_text)
+        await _save_transcript(job, routing.subject, safe_text)
 
         logger.info(f"Job {job.id[:8]} complete, {len(safe_text)} chars")
 
@@ -215,16 +219,23 @@ def _get_specialist_stream(subject: str, student_text: str):
         return stream_english_response(student_text)
 
 
-async def _log_routing_decision(session_id: str, to_agent: str, start_time: datetime) -> None:
+async def _log_routing_decision(
+    session_id: str,
+    to_agent: str,
+    start_time: datetime,
+    confidence: float = 0.0,
+    transcript_excerpt: str = "",
+) -> None:
     try:
         from backend.services.transcript_store import get_pool
-        latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        latency_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO routing_decisions (session_id, from_agent, to_agent, latency_ms) "
-                "VALUES ($1, 'orchestrator', $2, $3)",
-                session_id, to_agent, latency_ms,
+                "INSERT INTO routing_decisions "
+                "(session_id, from_agent, to_agent, latency_ms, confidence, transcript_excerpt) "
+                "VALUES ($1, 'orchestrator', $2, $3, $4, $5)",
+                session_id, to_agent, latency_ms, confidence, transcript_excerpt,
             )
     except Exception as e:
         logger.warning(f"routing_decisions insert failed: {e}")

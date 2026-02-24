@@ -27,7 +27,7 @@ async def test_route_math_question():
     )
 
     result = await route_intent("What is 25% of 80?", client=mock_client)
-    assert result == "math"
+    assert result.subject == "math"
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_route_history_question():
     )
 
     result = await route_intent("Why did World War I start?", client=mock_client)
-    assert result == "history"
+    assert result.subject == "history"
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_route_english_question():
     )
 
     result = await route_intent("Help me improve this sentence.", client=mock_client)
-    assert result == "english"
+    assert result.subject == "english"
 
 
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_route_escalation():
     )
 
     result = await route_intent("How do I hack a computer?", client=mock_client)
-    assert result == "escalate"
+    assert result.subject == "escalate"
 
 
 @pytest.mark.asyncio
@@ -83,7 +83,7 @@ async def test_route_unknown_defaults_to_english():
     )
 
     result = await route_intent("Something weird", client=mock_client)
-    assert result == "english"
+    assert result.subject == "english"
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,7 @@ async def test_route_api_failure_defaults_to_english():
     mock_client.messages.create = AsyncMock(side_effect=Exception("API error"))
 
     result = await route_intent("test question", client=mock_client)
-    assert result == "english"
+    assert result.subject == "english"
 
 
 @pytest.mark.asyncio
@@ -117,6 +117,49 @@ async def test_route_parametrized(question: str, expected: str):
     )
 
     result = await route_intent(question, client=mock_client)
-    assert result == expected
+    assert result.subject == expected
 
 
+@pytest.mark.asyncio
+async def test_classify_exact_match_has_confidence_1():
+    """Exact word response ('math') → confidence=1.0."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("math")
+    )
+
+    result = await route_intent("What is 2+2?", client=mock_client)
+    assert result.subject == "math"
+    assert result.confidence == 1.0
+
+
+@pytest.mark.asyncio
+async def test_classify_partial_match_has_confidence_0_8():
+    """Route word present but with extra text → confidence=0.8."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("I think math")
+    )
+
+    result = await route_intent("What is 2+2?", client=mock_client)
+    assert result.subject == "english"  # "I think math" not in route_map → fallback
+    assert result.confidence == 0.8     # partial match (math found in raw)
+
+
+@pytest.mark.asyncio
+async def test_classify_unknown_falls_back_to_english_confidence_0_5():
+    """Completely unknown response → english fallback with confidence=0.5."""
+    from specialists.classifier import route_intent
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response("xyzzy nonsense")
+    )
+
+    result = await route_intent("Something odd", client=mock_client)
+    assert result.subject == "english"
+    assert result.confidence == 0.5

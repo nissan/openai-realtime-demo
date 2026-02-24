@@ -31,27 +31,35 @@ def mock_pool_conn():
 
 @pytest.mark.asyncio
 async def test_routing_decision_inserted_on_classification(mock_pool_conn):
-    """_log_routing_decision inserts a row into routing_decisions."""
+    """_log_routing_decision inserts a row into routing_decisions with confidence + excerpt."""
     pool, conn = mock_pool_conn
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     with patch("backend.services.transcript_store.get_pool", new=AsyncMock(return_value=pool)):
         from backend.routers.orchestrator import _log_routing_decision
-        await _log_routing_decision("sess-1", "math", datetime.utcnow())
+        await _log_routing_decision(
+            "sess-1", "math", datetime.now(timezone.utc),
+            confidence=1.0,
+            transcript_excerpt="What is 25% of 80?",
+        )
 
     conn.execute.assert_called_once()
     sql = conn.execute.call_args[0][0]
     assert "INSERT INTO routing_decisions" in sql
     assert "orchestrator" in sql
-    # Verify bound params include session_id and to_agent
+    assert "confidence" in sql
+    assert "transcript_excerpt" in sql
+    # Verify bound params include session_id, to_agent, confidence, excerpt
     args = conn.execute.call_args[0]
     assert "sess-1" in args
     assert "math" in args
+    assert 1.0 in args
+    assert "What is 25% of 80?" in args
 
 
 @pytest.mark.asyncio
 async def test_guardrail_event_inserted_when_flagged(mock_pool_conn):
-    """_log_guardrail_event inserts with flagged=True when text was rewritten."""
+    """_log_guardrail_event inserts with flagged=True, confidence, and categories_flagged."""
     pool, conn = mock_pool_conn
 
     with patch("backend.services.transcript_store.get_pool", new=AsyncMock(return_value=pool)):
@@ -61,14 +69,22 @@ async def test_guardrail_event_inserted_when_flagged(mock_pool_conn):
             original="bad content here",
             rewritten="appropriate content here",
             flagged=True,
+            confidence=0.95,
+            categories_flagged=["harassment"],
         )
 
     conn.execute.assert_called_once()
     sql = conn.execute.call_args[0][0]
     assert "INSERT INTO guardrail_events" in sql
+    assert "confidence" in sql
+    assert "categories_flagged" in sql
     args = conn.execute.call_args[0]
     assert "sess-2" in args
-    assert True in args  # flagged=True
+    assert True in args              # flagged=True
+    assert 0.95 in args              # confidence
+    assert ["harassment"] in args    # categories_flagged
+    # query + 6 value params = 7 total positional args
+    assert len(args) == 7
 
 
 @pytest.mark.asyncio
@@ -93,7 +109,6 @@ async def test_guardrail_event_inserted_when_clean(mock_pool_conn):
 @pytest.mark.asyncio
 async def test_raw_text_differs_from_safe_text_when_guardrail_rewrites():
     """When guardrail rewrites, raw_text != safe_text and both are captured."""
-    from datetime import datetime
     from backend.models.job import OrchestratorJob
     from backend.models.session_state import SessionUserdata
 
@@ -104,7 +119,10 @@ async def test_raw_text_differs_from_safe_text_when_guardrail_rewrites():
     safe_response = "safe rewritten chunk"
 
     async def mock_classifier(text, client=None):
-        return "math"
+        result = MagicMock()
+        result.subject = "math"
+        result.confidence = 1.0
+        return result
 
     async def mock_specialist_stream(text):
         yield raw_response
@@ -170,7 +188,6 @@ async def test_audit_failures_do_not_break_orchestration():
     have their own try/except so a DB failure only logs a warning and never
     propagates to the main orchestration flow.
     """
-    from datetime import datetime
     from backend.models.job import OrchestratorJob
     from backend.models.session_state import SessionUserdata
 
@@ -178,7 +195,10 @@ async def test_audit_failures_do_not_break_orchestration():
     session = SessionUserdata(session_id="sess-6")
 
     async def mock_classifier(text, client=None):
-        return "math"
+        result = MagicMock()
+        result.subject = "math"
+        result.confidence = 1.0
+        return result
 
     async def mock_specialist_stream(text):
         yield "The answer is 4."

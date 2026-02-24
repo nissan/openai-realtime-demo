@@ -90,7 +90,10 @@ async def test_full_orchestration_pipeline(client):
 
     # Mock classifier + specialist + guardrail functions
     async def mock_classifier(text, client=None):
-        return "math"
+        result = MagicMock()
+        result.subject = "math"
+        result.confidence = 1.0
+        return result
 
     async def mock_specialist_stream(text):
         yield "The answer is 20."
@@ -125,6 +128,8 @@ async def test_full_orchestration_pipeline(client):
             "guardrail": mock_guardrail_pkg,
             "guardrail.service": mock_guardrail_service,
         }),
+        patch("backend.routers.orchestrator._log_routing_decision", new=AsyncMock()),
+        patch("backend.routers.orchestrator._log_guardrail_event", new=AsyncMock()),
         patch("backend.routers.orchestrator._save_transcript", new=AsyncMock()),
     ):
         # Dispatch

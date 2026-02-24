@@ -4,7 +4,7 @@ Unit tests for in-memory job store and TTL cleanup.
 Tests store operations without any network calls.
 """
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytest
 
 from backend.models.job import OrchestratorJob, JobStatus
@@ -75,7 +75,7 @@ async def test_store_cleanup_removes_expired():
     old_job.mark_processing("math")
     old_job.mark_complete(safe_text="old answer")
     # Backdate completed_at to be older than the TTL
-    old_job.completed_at = datetime.utcnow() - timedelta(seconds=7200)
+    old_job.completed_at = datetime.now(timezone.utc) - timedelta(seconds=7200)
     store_job(old_job)
 
     # Create a recent completed job (within TTL)
@@ -104,7 +104,7 @@ async def _run_single_cleanup(ttl_seconds: int) -> None:
     from datetime import timedelta
     from backend.models.job import JobStatus
 
-    cutoff = datetime.utcnow() - timedelta(seconds=ttl_seconds)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
     expired = [
         job_id for job_id, job in _jobs.items()
         if job.status in (JobStatus.COMPLETE, JobStatus.ERROR)

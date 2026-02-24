@@ -4,7 +4,7 @@ CRITICAL: Orchestrator-only routing. No specialist-to-specialist transitions.
 Each specialist only has route_back_to_orchestrator, not route_to_other_specialist.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ async def _log_routing_decision(session_id: str, to_agent: str, start_time: date
     """Insert a routing_decisions row. Failure is logged but never raised."""
     try:
         from services.transcript_store import get_pool
-        latency_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+        latency_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
@@ -38,7 +38,7 @@ async def _route_to_math_impl(session, question: str) -> str:
     userdata.mark_routing()
     userdata.current_subject = "math"
 
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     logger.info(f"Routing to math: {question[:50]}...")
     await session.transfer_agent(MathAgent)
     await _log_routing_decision(userdata.session_id or "", "math", start)
@@ -53,7 +53,7 @@ async def _route_to_history_impl(session, question: str) -> str:
     userdata.mark_routing()
     userdata.current_subject = "history"
 
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     logger.info(f"Routing to history: {question[:50]}...")
     await session.transfer_agent(HistoryAgent)
     await _log_routing_decision(userdata.session_id or "", "history", start)
@@ -68,7 +68,7 @@ async def _route_to_english_impl(session, question: str) -> str:
     userdata.mark_routing()
     userdata.current_subject = "english"
 
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     logger.info(f"Routing to English (Realtime): {question[:50]}...")
     await session.transfer_agent(EnglishAgent)
     await _log_routing_decision(userdata.session_id or "", "english", start)
@@ -83,7 +83,7 @@ async def _escalate_impl(session, reason: str) -> str:
 
     logger.warning(f"Escalating session {userdata.session_id}: {reason}")
 
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         from services.human_escalation import notify_escalation
         await notify_escalation(

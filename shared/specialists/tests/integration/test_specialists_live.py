@@ -18,7 +18,8 @@ from specialists.english import stream_english_response
 async def test_classify_math():
     """Claude Haiku routes math question to 'math'."""
     result = await route_intent("What is the square root of 144?")
-    assert result == "math"
+    assert result.subject == "math"
+    assert result.confidence > 0.0
 
 
 @pytest.mark.integration
@@ -26,7 +27,8 @@ async def test_classify_math():
 async def test_classify_history():
     """Claude Haiku routes history question to 'history'."""
     result = await route_intent("When did World War II end?")
-    assert result == "history"
+    assert result.subject == "history"
+    assert result.confidence > 0.0
 
 
 @pytest.mark.integration
@@ -34,7 +36,8 @@ async def test_classify_history():
 async def test_classify_english():
     """Claude Haiku routes grammar question to 'english'."""
     result = await route_intent("Help me fix the grammar in this sentence.")
-    assert result == "english"
+    assert result.subject == "english"
+    assert result.confidence > 0.0
 
 
 @pytest.mark.integration

@@ -31,13 +31,13 @@ def remove_job(job_id: str) -> None:
 
 async def cleanup_expired_jobs(ttl_seconds: int = 3600) -> None:
     """Periodically remove old completed jobs to prevent memory growth."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from backend.models.job import JobStatus
 
     while True:
         try:
             await asyncio.sleep(300)  # Check every 5 minutes
-            cutoff = datetime.utcnow() - timedelta(seconds=ttl_seconds)
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
 
             expired = [
                 job_id for job_id, job in _jobs.items()
