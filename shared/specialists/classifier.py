@@ -4,9 +4,12 @@ Uses Claude Haiku for fast, cheap classification at temperature 0.1.
 CRITICAL: Returns RoutingResult with subject string constant + confidence score.
 """
 import logging
+import os
 from dataclasses import dataclass
 from typing import Literal
 from anthropic import AsyncAnthropic
+
+CLASSIFIER_MODEL = os.environ.get("ANTHROPIC_CLASSIFIER_MODEL", "claude-haiku-4-5-20251001")
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +66,7 @@ async def route_intent(
 
     try:
         response = await _client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=CLASSIFIER_MODEL,
             max_tokens=10,
             temperature=0.1,
             system=SYSTEM_PROMPT,

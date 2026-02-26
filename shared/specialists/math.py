@@ -3,8 +3,11 @@ Math specialist using Claude Sonnet 4.6 for detailed mathematical reasoning.
 Returns AsyncGenerator[str, None] for streaming responses.
 """
 import logging
+import os
 from typing import AsyncGenerator, Optional
 from anthropic import AsyncAnthropic
+
+MATH_MODEL = os.environ.get("ANTHROPIC_MATH_MODEL", "claude-sonnet-4-6")
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ async def answer_math_question(
     messages = messages + [{"role": "user", "content": question}]
 
     async with _client.messages.stream(
-        model="claude-sonnet-4-6",
+        model=MATH_MODEL,
         max_tokens=1024,
         system=SYSTEM_PROMPT,
         messages=messages,

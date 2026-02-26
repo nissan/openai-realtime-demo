@@ -3,8 +3,11 @@ History specialist using GPT-4o for rich historical knowledge.
 Returns AsyncGenerator[str, None] for streaming responses.
 """
 import logging
+import os
 from typing import AsyncGenerator, Optional
 from openai import AsyncOpenAI
+
+HISTORY_MODEL = os.environ.get("OPENAI_HISTORY_MODEL", "gpt-4o")
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,7 @@ async def answer_history_question(
     messages.append({"role": "user", "content": question})
 
     stream = await _client.chat.completions.create(
-        model="gpt-4o",
+        model=HISTORY_MODEL,
         messages=messages,
         stream=True,
         max_tokens=1024,
