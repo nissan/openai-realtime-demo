@@ -29,4 +29,9 @@ test.describe("TeacherObserver", () => {
     await page.goto("/student?v=b");
     await expect(page.getByTestId("escalation-banner")).not.toBeVisible();
   });
+
+  test("escalation panel is absent before any escalation", async ({ page }) => {
+    await page.goto("/teacher?v=b&session=test-sess");
+    await expect(page.getByTestId("escalation-panel")).not.toBeVisible();
+  });
 });

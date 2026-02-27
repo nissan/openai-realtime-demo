@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TranscriptTurn } from "@/components/shared/TranscriptPanel";
 import TranscriptPanel from "@/components/shared/TranscriptPanel";
+import { useEscalationWatch } from "@/hooks/useEscalationWatch";
 
 interface TeacherObserverProps {
   version: "a" | "b";
@@ -15,6 +16,7 @@ export default function TeacherObserver({ version, sessionId }: TeacherObserverP
   const [connected, setConnected] = useState(false);
   const [injection, setInjection] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
+  const escalation = useEscalationWatch(version === "b" ? sessionId : null);
 
   useEffect(() => {
     if (version !== "b" || !sessionId) return;
@@ -76,6 +78,19 @@ export default function TeacherObserver({ version, sessionId }: TeacherObserverP
         <div className={`w-2 h-2 rounded-full ${connected ? "bg-green-500" : "bg-gray-500"}`} />
         <span className="text-sm text-gray-400">{connected ? "Connected" : "Disconnected"}</span>
       </div>
+
+      {escalation && (
+        <div
+          data-testid="escalation-panel"
+          className="bg-yellow-900/50 border border-yellow-500/50 rounded-xl p-4"
+        >
+          <p className="font-semibold text-yellow-300 mb-1">Student escalated</p>
+          <p className="text-sm text-gray-300">{escalation.reason ?? "Needs assistance"}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {new Date(escalation.created_at).toLocaleTimeString()}
+          </p>
+        </div>
+      )}
 
       <TranscriptPanel turns={turns} />
 
